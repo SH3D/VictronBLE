@@ -1,0 +1,29 @@
+{
+  "name": "VictronBLE",
+  "version": "1.0.0",
+  "description": "ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements",
+  "keywords": "victron, ble, bluetooth, solar, mppt, battery, smartshunt, esp32",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/VictronBLE.git"
+  },
+  "authors": [
+    {
+      "name": "Your Name",
+      "email": "your.email@example.com"
+    }
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/yourusername/VictronBLE",
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "dependencies": [],
+  "export": {
+    "exclude": [
+      "examples",
+      "test",
+      "tests",
+      ".git"
+    ]
+  }
+}

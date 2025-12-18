@@ -1,0 +1,67 @@
+#######################################
+# Syntax Coloring Map For VictronBLE
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+VictronBLE	KEYWORD1
+VictronDeviceCallback	KEYWORD1
+VictronDeviceConfig	KEYWORD1
+VictronDeviceData	KEYWORD1
+SolarChargerData	KEYWORD1
+BatteryMonitorData	KEYWORD1
+InverterData	KEYWORD1
+DCDCConverterData	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+addDevice	KEYWORD2
+removeDevice	KEYWORD2
+getDeviceCount	KEYWORD2
+setCallback	KEYWORD2
+loop	KEYWORD2
+getSolarChargerData	KEYWORD2
+getBatteryMonitorData	KEYWORD2
+getInverterData	KEYWORD2
+getDCDCConverterData	KEYWORD2
+getDevicesByType	KEYWORD2
+setDebug	KEYWORD2
+getLastError	KEYWORD2
+onSolarChargerData	KEYWORD2
+onBatteryMonitorData	KEYWORD2
+onInverterData	KEYWORD2
+onDCDCConverterData	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+DEVICE_TYPE_UNKNOWN	LITERAL1
+DEVICE_TYPE_SOLAR_CHARGER	LITERAL1
+DEVICE_TYPE_BATTERY_MONITOR	LITERAL1
+DEVICE_TYPE_INVERTER	LITERAL1
+DEVICE_TYPE_DCDC_CONVERTER	LITERAL1
+DEVICE_TYPE_SMART_LITHIUM	LITERAL1
+DEVICE_TYPE_INVERTER_RS	LITERAL1
+DEVICE_TYPE_SMART_BATTERY_PROTECT	LITERAL1
+DEVICE_TYPE_LYNX_SMART_BMS	LITERAL1
+DEVICE_TYPE_MULTI_RS	LITERAL1
+DEVICE_TYPE_VE_BUS	LITERAL1
+DEVICE_TYPE_DC_ENERGY_METER	LITERAL1
+
+CHARGER_OFF	LITERAL1
+CHARGER_LOW_POWER	LITERAL1
+CHARGER_FAULT	LITERAL1
+CHARGER_BULK	LITERAL1
+CHARGER_ABSORPTION	LITERAL1
+CHARGER_FLOAT	LITERAL1
+CHARGER_STORAGE	LITERAL1
+CHARGER_EQUALIZE	LITERAL1
+CHARGER_INVERTING	LITERAL1
+CHARGER_POWER_SUPPLY	LITERAL1
+CHARGER_EXTERNAL_CONTROL	LITERAL1
