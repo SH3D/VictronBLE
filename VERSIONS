@@ -1,0 +1,29 @@
+# Version History
+
+## 0.1.1 (2025-12-18)
+
+Initial release - not yet tested on hardware.
+
+### Features
+- Support for multiple Victron device types:
+  - Solar Chargers (MPPT)
+  - Battery Monitors (SmartShunt, BMV)
+  - Inverters (MultiPlus, Quattro, Phoenix with VE.Bus BLE)
+  - DC-DC Converters (Orion Smart, Orion XS)
+- BLE advertisement decryption using AES-128-CTR
+- Callback interface for real-time data updates
+- Manual data polling API
+- Support for multiple simultaneous devices
+- Debug logging
+- Framework agnostic (Arduino and ESP-IDF)
+
+### Known Issues
+- Not yet tested with real hardware
+- No validation against actual Victron devices
+
+### TODO
+- Hardware testing with real Victron devices
+- Add more device types (Smart Battery Protect, Lynx Smart BMS, etc.)
+- Add more examples
+- Performance optimization
+- Add unit tests

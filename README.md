@@ -2,6 +2,12 @@
 
 ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements.
 
+**⚠️ INITIAL RELEASE - NOT YET TESTED ON HARDWARE**
+
+This is an initial release (v0.1.1) and has not yet been tested with real Victron devices. Use with caution and please report any issues you encounter. Testing and feedback are greatly appreciated!
+
+---
+
 Why another library? Most of the Victron BLE examples are built into other frameworks (e.g. ESPHome) and I want a library that can be used in all ESP32 systems, including ESPHome or other frameworks. With long term plan to try and move others to this library and improve code with many eyes.
 
 ## Features
@@ -440,6 +446,10 @@ Copyright (c) 2025 Scott Penrose <scottp@dd.com.au>
 ## Disclaimer
 
 This library is not officially supported by Victron Energy. Use at your own risk.
+
+## Version History
+
+See [VERSIONS](VERSIONS) file for detailed changelog and release history.
 
 ## Support
 
