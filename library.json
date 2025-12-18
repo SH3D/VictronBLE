@@ -5,16 +5,16 @@
   "keywords": "victron, ble, bluetooth, solar, mppt, battery, smartshunt, esp32",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/VictronBLE.git"
+    "url": "https://gitea.sh3d.com.au/Sh3d/VictronBLE.git"
   },
   "authors": [
     {
-      "name": "Your Name",
-      "email": "your.email@example.com"
+      "name": "Scott Penrose",
+      "email": "scottp@dd.com.au"
     }
   ],
   "license": "MIT",
-  "homepage": "https://github.com/yourusername/VictronBLE",
+  "homepage": "https://gitea.sh3d.com.au/Sh3d/VictronBLE.git",
   "frameworks": ["arduino", "espidf"],
   "platforms": ["espressif32"],
   "dependencies": [],
