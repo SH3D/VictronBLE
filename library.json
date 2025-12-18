@@ -1,8 +1,8 @@
 {
   "name": "VictronBLE",
   "version": "0.1.1",
-  "description": "ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements",
-  "keywords": "victron, ble, bluetooth, solar, mppt, battery, smartshunt, esp32",
+  "description": "ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements. Supports SmartSolar MPPT, SmartShunt, BMV, MultiPlus, Orion and other Victron devices.",
+  "keywords": "victron, ble, bluetooth, solar, mppt, battery, smartshunt, smartsolar, bmv, inverter, multiplus, esp32, iot, energy, monitoring",
   "repository": {
     "type": "git",
     "url": "https://gitea.sh3d.com.au/Sh3d/VictronBLE.git"
@@ -10,15 +10,33 @@
   "authors": [
     {
       "name": "Scott Penrose",
-      "email": "scottp@dd.com.au"
+      "email": "scottp@dd.com.au",
+      "url": "https://gitea.sh3d.com.au/Sh3d",
+      "maintainer": true
     }
   ],
   "license": "MIT",
-  "homepage": "https://gitea.sh3d.com.au/Sh3d/VictronBLE.git",
+  "homepage": "https://gitea.sh3d.com.au/Sh3d/VictronBLE",
   "frameworks": ["arduino", "espidf"],
   "platforms": ["espressif32"],
+  "headers": ["VictronBLE.h"],
   "dependencies": [],
+  "examples": [
+    {
+      "name": "MultiDevice",
+      "base": "examples/MultiDevice",
+      "files": ["src/main.cpp"]
+    }
+  ],
   "export": {
-    "exclude": ["examples", "test", "tests", ".git"]
+    "exclude": [
+      "examples/*/.pio",
+      "examples/*/.vscode",
+      "examples/*/test",
+      "test",
+      "tests",
+      ".git",
+      ".gitignore"
+    ]
   }
 }
