@@ -1,0 +1,4 @@
+# Misc Stuff
+
+* Consider support for upper/lower case MAC address and optionaly ":"
+* Scanning - list devices publishing, should be able to get list even without knowing MAC / Encryption key
