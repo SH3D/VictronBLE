@@ -66,3 +66,5 @@ __pycache__/
 .Python
 venv/
 env/
+
+*.tar.gz
