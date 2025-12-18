@@ -1,6 +1,9 @@
 /**
  * VictronBLE - ESP32 library for Victron Energy BLE devices
  * Implementation file
+ * 
+ * Copyright (c) 2025 Scott Penrose
+ * License: MIT
  */
 
 #include "VictronBLE.h"

@@ -35,13 +35,13 @@ Why another library? Most of the Victron BLE examples are built into other frame
 1. Add to `platformio.ini`:
 ```ini
 lib_deps = 
-    https://github.com/yourusername/VictronBLE.git
+    https://gitea.sh3d.com.au/Sh3d/VictronBLE
 ```
 
 2. Or clone into your project's `lib` folder:
 ```bash
 cd lib
-git clone https://github.com/yourusername/VictronBLE.git
+git clone https://gitea.sh3d.com.au/Sh3d/VictronBLE
 ```
 
 ### Arduino IDE
@@ -431,6 +431,11 @@ This library was inspired by and builds upon excellent prior work:
 ## License
 
 MIT License - see LICENSE file for details
+
+Copyright (c) 2025 Scott Penrose <scottp@dd.com.au>
+
+* https://www.sh3d.com.au/ - Sh3d
+* https://www.dd.com.au/ - Digital Dimensions
 
 ## Disclaimer
 

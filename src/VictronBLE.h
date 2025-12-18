@@ -4,7 +4,7 @@
  * Based on Victron's official BLE Advertising protocol documentation
  * Inspired by hoberman's examples and keshavdv's Python library
  * 
- * Copyright (c) 2024
+ * Copyright (c) 2025 Scott Penrose
  * License: MIT
  */
 

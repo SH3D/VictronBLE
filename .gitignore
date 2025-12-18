@@ -1,0 +1,68 @@
+# PlatformIO
+.pio
+.pioenvs
+.piolibdeps
+.clang_complete
+.gcc-flags.json
+.ccls
+compile_commands.json
+
+# VSCode
+.vscode/
+!.vscode/extensions.json
+.history/
+
+# Build artifacts
+*.o
+*.a
+*.hex
+*.bin
+*.elf
+*.eep
+*.lss
+*.map
+*.sym
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# IDEs
+*.swp
+*.swo
+.idea/
+*.sublime-project
+*.sublime-workspace
+.atom/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+*~.nib
+local.properties
+
+# Arduino
+*.ino.cpp
+*.ino.hex
+*.ino.elf
+*.ino.eep
+*.ino.map
+
+# Dependencies
+node_modules/
+bower_components/
+
+# Python (if using scripts)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+venv/
+env/
