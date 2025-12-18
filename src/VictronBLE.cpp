@@ -213,6 +213,8 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
         return;
     }
 
+    // XXX Use struct like code in Sh3dNg
+
     // Check if it's Victron (manufacturer ID 0x02E1)
     uint16_t mfgId = (uint8_t)mfgData[1] << 8 | (uint8_t)mfgData[0];
     if (mfgId != VICTRON_MANUFACTURER_ID) {
@@ -236,9 +238,11 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
                                     const String& macAddress) {
     auto it = devices.find(macAddress);
     if (it == devices.end()) {
+        debugPrint("parseAdvertisement: Device not found");
         return false;
     }
 
+    // XXX Work out second?
     DeviceInfo* deviceInfo = it->second;
 
     if (len < 6) {
@@ -246,18 +250,29 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
         return false;
     }
 
+    // XXX map to struct - NOTE: Check size first (exact? or bigger?)
+    victronManufacturerData * vicData=(victronManufacturerData *)manufacturerData;
+    debugPrint("VendorID" + String(vicData->vendorID));
+    debugPrint("Record Type" + String(vicData->victronRecordType));
+
     // Structure: [MfgID(2)] [DeviceType(1)] [IV(2)] [EncryptedData(n)]
-    uint8_t deviceType = manufacturerData[2];
+    // XXX This is actually 4 - Struct would help - it was 2
+    uint8_t deviceType = manufacturerData[4];
 
     // Extract IV (initialization vector) - bytes 3-4, little-endian
+    // XXX These look wrong
     uint8_t iv[16] = {0};
     iv[0] = manufacturerData[3];
     iv[1] = manufacturerData[4];
     // Rest of IV is zero-padded
 
     // Encrypted data starts at byte 5
-    const uint8_t* encryptedData = manufacturerData + 5;
-    size_t encryptedLen = len - 5;
+    // const uint8_t* encryptedData = manufacturerData + 5;
+    // size_t encryptedLen = len - 5;
+
+    // XXX Experiment
+    const uint8_t* encryptedData = vicData->victronEncryptedData;
+    size_t encryptedLen = sizeof(vicData->victronEncryptedData);
 
     if (debugEnabled) {
         debugPrintHex("Encrypted data", encryptedData, encryptedLen);

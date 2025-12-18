@@ -2,3 +2,7 @@
 
 * Consider support for upper/lower case MAC address and optionaly ":"
 * Scanning - list devices publishing, should be able to get list even without knowing MAC / Encryption key
+* Struct vs Manual
+    * Sh3dNg version and examples uses structs to get data - seems to work
+    * Example generated uses manually managing a string
+    * Reconsider what is best and use
