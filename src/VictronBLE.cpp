@@ -177,7 +177,7 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
             if (mfgData.length() >= 2) {
                 uint16_t mfgId = (uint8_t)mfgData[1] << 8 | (uint8_t)mfgData[0];
                 if (mfgId == VICTRON_MANUFACTURER_ID) {
-                    debugPrint("Found unmonitored Victron Device: " + mac);
+                    debugPrint("Found unmonitored Victron Device: " + normalizeMAC(mac));
                     // DeviceInfo* deviceInfo = new DeviceInfo(mac, advertisedDevice.getName());
                     // devices.insert({normalizedMAC, deviceInfo});
                     // XXX What type of Victron device is it?
