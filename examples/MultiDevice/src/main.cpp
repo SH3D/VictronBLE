@@ -143,7 +143,7 @@ MyVictronCallback callback;
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    delay(2000);
 
     Serial.println("\n\n=================================");
     Serial.println("VictronBLE Multi-Device Example");
@@ -155,12 +155,14 @@ void setup() {
         Serial.println(victron.getLastError());
         while (1) delay(1000);
     }
+    delay(1000);
 
     // Enable debug output (optional)
     victron.setDebug(true);
 
     // Set callback for data updates
     victron.setCallback(&callback);
+    delay(1000);
 
     // Add your devices here
     // Replace with your actual MAC addresses and encryption keys
@@ -187,6 +189,7 @@ void setup() {
         "0ec3adf7433dd61793ff2f3b8ad32ed8",         // Encryption key (32 hex chars)
         DEVICE_TYPE_SOLAR_CHARGER                    // Device type
     );
+    delay(1000);
 
     /*
      *
@@ -237,8 +240,10 @@ void setup() {
         DEVICE_TYPE_INVERTER
     );
 
+    delay(1000);
     Serial.println("Configured " + String(victron.getDeviceCount()) + " devices");
     Serial.println("\nStarting BLE scan...\n");
+    delay(1000);
 }
 
 void loop() {
