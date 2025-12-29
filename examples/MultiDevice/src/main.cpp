@@ -206,36 +206,44 @@ void setup() {
      */
 
     // Example: Solar Charger #1
+    /*
     victron.addDevice(
         "MPPT 100/30",                              // Device name
         "E7:48:D4:28:B7:9C",                        // MAC address
         "0df4d0395b7d1a876c0c33ecb9e70dcd",         // Encryption key (32 hex chars)
         DEVICE_TYPE_SOLAR_CHARGER                    // Device type
     );
+    */
 
     // Example: Solar Charger #2
+    /*
     victron.addDevice(
         "MPPT 75/15",
         "AA:BB:CC:DD:EE:FF",
         "1234567890abcdef1234567890abcdef",
         DEVICE_TYPE_SOLAR_CHARGER
     );
+    */
 
     // Example: Battery Monitor (SmartShunt)
+    /*
     victron.addDevice(
         "SmartShunt",
         "11:22:33:44:55:66",
         "fedcba0987654321fedcba0987654321",
         DEVICE_TYPE_BATTERY_MONITOR
     );
+    */
 
     // Example: Inverter/Charger
+    /*
     victron.addDevice(
         "MultiPlus",
         "99:88:77:66:55:44",
         "abcdefabcdefabcdefabcdefabcdefab",
         DEVICE_TYPE_INVERTER
     );
+    */
 
     Serial.println("Configured " + String(victron.getDeviceCount()) + " devices");
     Serial.println("\nStarting BLE scan...\n");

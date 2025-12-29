@@ -242,41 +242,43 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
         return false;
     }
 
-    // XXX Work out second?
     DeviceInfo* deviceInfo = it->second;
 
-    if (len < 6) {
-        debugPrint("Manufacturer data too short");
+    // Verify minimum size for victronManufacturerData struct
+    if (len < sizeof(victronManufacturerData)) {
+        debugPrint("Manufacturer data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // XXX map to struct - NOTE: Check size first (exact? or bigger?)
-    victronManufacturerData * vicData=(victronManufacturerData *)manufacturerData;
-    debugPrint("VendorID" + String(vicData->vendorID));
-    debugPrint("Record Type" + String(vicData->victronRecordType));
+    // Cast manufacturer data to struct for easy access
+    const victronManufacturerData* vicData = (const victronManufacturerData*)manufacturerData;
 
-    // Structure: [MfgID(2)] [DeviceType(1)] [IV(2)] [EncryptedData(n)]
-    // XXX This is actually 4 - Struct would help - it was 2
-    uint8_t deviceType = manufacturerData[4];
+    if (debugEnabled) {
+        debugPrint("Vendor ID: 0x" + String(vicData->vendorID, HEX));
+        debugPrint("Beacon Type: 0x" + String(vicData->beaconType, HEX));
+        debugPrint("Model ID: 0x" + String(vicData->modelID, HEX));
+        debugPrint("Readout Type: 0x" + String(vicData->readoutType, HEX));
+        debugPrint("Record Type: 0x" + String(vicData->victronRecordType, HEX));
+        debugPrint("Nonce: 0x" + String(vicData->nonceDataCounter, HEX));
+    }
 
-    // Extract IV (initialization vector) - bytes 3-4, little-endian
-    // XXX These look wrong
+    // Get device type from record type field
+    uint8_t deviceType = vicData->victronRecordType;
+
+    // Build IV (initialization vector) from nonce
+    // IV is 16 bytes: nonce (2 bytes little-endian) + zeros (14 bytes)
     uint8_t iv[16] = {0};
-    iv[0] = manufacturerData[3];
-    iv[1] = manufacturerData[4];
-    // Rest of IV is zero-padded
+    iv[0] = vicData->nonceDataCounter & 0xFF;        // Low byte
+    iv[1] = (vicData->nonceDataCounter >> 8) & 0xFF; // High byte
+    // Remaining bytes stay zero
 
-    // Encrypted data starts at byte 5
-    // const uint8_t* encryptedData = manufacturerData + 5;
-    // size_t encryptedLen = len - 5;
-
-    // XXX Experiment
+    // Get pointer to encrypted data
     const uint8_t* encryptedData = vicData->victronEncryptedData;
     size_t encryptedLen = sizeof(vicData->victronEncryptedData);
 
     if (debugEnabled) {
-        debugPrintHex("Encrypted data", encryptedData, encryptedLen);
         debugPrintHex("IV", iv, 16);
+        debugPrintHex("Encrypted data", encryptedData, encryptedLen);
     }
 
     // Decrypt the data
@@ -391,39 +393,41 @@ bool VictronBLE::decryptAdvertisement(const uint8_t* encrypted, size_t encLen,
 
 // Parse Solar Charger data
 bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, SolarChargerData& result) {
-    if (len < 12) {
-        debugPrint("Solar charger data too short");
+    if (len < sizeof(victronSolarChargerPayload)) {
+        debugPrint("Solar charger data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Byte 0: Charge state
-    result.chargeState = (SolarChargerState)data[0];
+    // Cast decrypted data to struct for easy access
+    const victronSolarChargerPayload* payload = (const victronSolarChargerPayload*)data;
 
-    // Bytes 1-2: Battery voltage (10 mV units)
-    uint16_t vBat = data[1] | (data[2] << 8);
-    result.batteryVoltage = vBat * 0.01f;
+    // Parse charge state
+    result.chargeState = (SolarChargerState)payload->deviceState;
 
-    // Bytes 3-4: Battery current (10 mA units, signed)
-    int16_t iBat = (int16_t)(data[3] | (data[4] << 8));
-    result.batteryCurrent = iBat * 0.01f;
+    // Parse battery voltage (10 mV units -> volts)
+    result.batteryVoltage = payload->batteryVoltage * 0.01f;
 
-    // Bytes 5-6: Yield today (10 Wh units)
-    uint16_t yield = data[5] | (data[6] << 8);
-    result.yieldToday = yield * 10;
+    // Parse battery current (10 mA units, signed -> amps)
+    result.batteryCurrent = payload->batteryCurrent * 0.01f;
 
-    // Bytes 7-8: PV power (1 W units)
-    uint16_t pvPower = data[7] | (data[8] << 8);
-    result.panelPower = pvPower;
+    // Parse yield today (10 Wh units -> Wh)
+    result.yieldToday = payload->yieldToday * 10;
 
-    // Bytes 9-10: Load current (10 mA units)
-    uint16_t iLoad = data[9] | (data[10] << 8);
-    if (iLoad != 0xFFFF) { // 0xFFFF means no load output
-        result.loadCurrent = iLoad * 0.01f;
+    // Parse PV power (1 W units)
+    result.panelPower = payload->inputPower;
+
+    // Parse load current (10 mA units -> amps, 0xFFFF = no load)
+    if (payload->loadCurrent != 0xFFFF) {
+        result.loadCurrent = payload->loadCurrent * 0.01f;
+    } else {
+        result.loadCurrent = 0;
     }
 
     // Calculate PV voltage from power and current (if current > 0)
     if (result.batteryCurrent > 0.1f) {
         result.panelVoltage = result.panelPower / result.batteryCurrent;
+    } else {
+        result.panelVoltage = 0;
     }
 
     debugPrint("Solar Charger: " + String(result.batteryVoltage, 2) + "V, " +
@@ -435,54 +439,60 @@ bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, SolarCharger
 
 // Parse Battery Monitor data
 bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMonitorData& result) {
-    if (len < 15) {
-        debugPrint("Battery monitor data too short");
+    if (len < sizeof(victronBatteryMonitorPayload)) {
+        debugPrint("Battery monitor data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Bytes 0-1: Remaining time (1 minute units)
-    uint16_t timeRemaining = data[0] | (data[1] << 8);
-    result.remainingMinutes = timeRemaining;
+    // Cast decrypted data to struct for easy access
+    const victronBatteryMonitorPayload* payload = (const victronBatteryMonitorPayload*)data;
 
-    // Bytes 2-3: Battery voltage (10 mV units)
-    uint16_t vBat = data[2] | (data[3] << 8);
-    result.voltage = vBat * 0.01f;
+    // Parse remaining time (1 minute units)
+    result.remainingMinutes = payload->remainingMins;
 
-    // Byte 4: Alarms
-    uint8_t alarms = data[4];
-    result.alarmLowVoltage = (alarms & 0x01) != 0;
-    result.alarmHighVoltage = (alarms & 0x02) != 0;
-    result.alarmLowSOC = (alarms & 0x04) != 0;
-    result.alarmLowTemperature = (alarms & 0x10) != 0;
-    result.alarmHighTemperature = (alarms & 0x20) != 0;
+    // Parse battery voltage (10 mV units -> volts)
+    result.voltage = payload->batteryVoltage * 0.01f;
 
-    // Bytes 5-6: Aux voltage/temperature (10 mV or 0.01K units)
-    uint16_t aux = data[5] | (data[6] << 8);
-    if (aux < 3000) { // If < 30V, it's voltage
-        result.auxVoltage = aux * 0.01f;
+    // Parse alarm bits
+    result.alarmLowVoltage = (payload->alarms & 0x01) != 0;
+    result.alarmHighVoltage = (payload->alarms & 0x02) != 0;
+    result.alarmLowSOC = (payload->alarms & 0x04) != 0;
+    result.alarmLowTemperature = (payload->alarms & 0x10) != 0;
+    result.alarmHighTemperature = (payload->alarms & 0x20) != 0;
+
+    // Parse aux data: voltage (10 mV units) or temperature (0.01K units)
+    if (payload->auxData < 3000) { // If < 30V, it's voltage
+        result.auxVoltage = payload->auxData * 0.01f;
         result.temperature = 0;
     } else { // Otherwise temperature in 0.01 Kelvin
-        result.temperature = (aux * 0.01f) - 273.15f;
+        result.temperature = (payload->auxData * 0.01f) - 273.15f;
         result.auxVoltage = 0;
     }
 
-    // Bytes 7-9: Battery current (22-bit signed, 1 mA units)
-    int32_t current = data[7] | (data[8] << 8) | ((data[9] & 0x3F) << 16);
-    if (current & 0x200000) { // Sign extend if negative
+    // Parse battery current (22-bit signed, 1 mA units)
+    // Bits 0-7: currentLow, Bits 8-15: currentMid, Bits 16-21: low 6 bits of currentHigh_consumedLow
+    int32_t current = payload->currentLow |
+                     (payload->currentMid << 8) |
+                     ((payload->currentHigh_consumedLow & 0x3F) << 16);
+    // Sign extend from 22 bits to 32 bits
+    if (current & 0x200000) {
         current |= 0xFFC00000;
     }
-    result.current = current * 0.001f;
+    result.current = current * 0.001f; // Convert mA to A
 
-    // Bytes 9-11: Consumed Ah (18-bit signed, 10 mAh units)
-    int32_t consumedAh = ((data[9] & 0xC0) >> 6) | (data[10] << 2) | ((data[11] & 0xFF) << 10);
-    if (consumedAh & 0x20000) { // Sign extend
+    // Parse consumed Ah (18-bit signed, 10 mAh units)
+    // Bits 0-1: high 2 bits of currentHigh_consumedLow, Bits 2-9: consumedMid, Bits 10-17: consumedHigh
+    int32_t consumedAh = ((payload->currentHigh_consumedLow & 0xC0) >> 6) |
+                        (payload->consumedMid << 2) |
+                        (payload->consumedHigh << 10);
+    // Sign extend from 18 bits to 32 bits
+    if (consumedAh & 0x20000) {
         consumedAh |= 0xFFFC0000;
     }
-    result.consumedAh = consumedAh * 0.01f;
+    result.consumedAh = consumedAh * 0.01f; // Convert 10mAh to Ah
 
-    // Bytes 12-13: SOC (10 = 1.0%)
-    uint16_t soc = data[12] | ((data[13] & 0x03) << 8);
-    result.soc = soc * 0.1f;
+    // Parse SOC (10-bit value, 10 = 1.0%)
+    result.soc = (payload->soc & 0x3FF) * 0.1f;
 
     debugPrint("Battery Monitor: " + String(result.voltage, 2) + "V, " +
                String(result.current, 2) + "A, SOC: " + String(result.soc, 1) + "%");
@@ -492,35 +502,38 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
 
 // Parse Inverter data
 bool VictronBLE::parseInverter(const uint8_t* data, size_t len, InverterData& result) {
-    if (len < 10) {
-        debugPrint("Inverter data too short");
+    if (len < sizeof(victronInverterPayload)) {
+        debugPrint("Inverter data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Byte 0: Device state
-    result.state = data[0];
+    // Cast decrypted data to struct for easy access
+    const victronInverterPayload* payload = (const victronInverterPayload*)data;
 
-    // Bytes 1-2: Battery voltage (10 mV units)
-    uint16_t vBat = data[1] | (data[2] << 8);
-    result.batteryVoltage = vBat * 0.01f;
+    // Parse device state
+    result.state = payload->deviceState;
 
-    // Bytes 3-4: Battery current (10 mA units, signed)
-    int16_t iBat = (int16_t)(data[3] | (data[4] << 8));
-    result.batteryCurrent = iBat * 0.01f;
+    // Parse battery voltage (10 mV units -> volts)
+    result.batteryVoltage = payload->batteryVoltage * 0.01f;
 
-    // Bytes 5-7: AC Power (1 W units, signed 24-bit)
-    int32_t acPower = data[5] | (data[6] << 8) | (data[7] << 16);
-    if (acPower & 0x800000) { // Sign extend
+    // Parse battery current (10 mA units, signed -> amps)
+    result.batteryCurrent = payload->batteryCurrent * 0.01f;
+
+    // Parse AC Power (signed 24-bit, 1 W units)
+    int32_t acPower = payload->acPowerLow |
+                     (payload->acPowerMid << 8) |
+                     (payload->acPowerHigh << 16);
+    // Sign extend from 24 bits to 32 bits
+    if (acPower & 0x800000) {
         acPower |= 0xFF000000;
     }
     result.acPower = acPower;
 
-    // Byte 8: Alarms
-    uint8_t alarms = data[8];
-    result.alarmLowVoltage = (alarms & 0x01) != 0;
-    result.alarmHighVoltage = (alarms & 0x02) != 0;
-    result.alarmHighTemperature = (alarms & 0x04) != 0;
-    result.alarmOverload = (alarms & 0x08) != 0;
+    // Parse alarm bits
+    result.alarmLowVoltage = (payload->alarms & 0x01) != 0;
+    result.alarmHighVoltage = (payload->alarms & 0x02) != 0;
+    result.alarmHighTemperature = (payload->alarms & 0x04) != 0;
+    result.alarmOverload = (payload->alarms & 0x08) != 0;
 
     debugPrint("Inverter: " + String(result.batteryVoltage, 2) + "V, " +
                String(result.acPower) + "W, State: " + String(result.state));
@@ -530,28 +543,28 @@ bool VictronBLE::parseInverter(const uint8_t* data, size_t len, InverterData& re
 
 // Parse DC-DC Converter data
 bool VictronBLE::parseDCDCConverter(const uint8_t* data, size_t len, DCDCConverterData& result) {
-    if (len < 10) {
-        debugPrint("DC-DC converter data too short");
+    if (len < sizeof(victronDCDCConverterPayload)) {
+        debugPrint("DC-DC converter data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Byte 0: Charge state
-    result.chargeState = data[0];
+    // Cast decrypted data to struct for easy access
+    const victronDCDCConverterPayload* payload = (const victronDCDCConverterPayload*)data;
 
-    // Bytes 1-2: Input voltage (10 mV units)
-    uint16_t vIn = data[1] | (data[2] << 8);
-    result.inputVoltage = vIn * 0.01f;
+    // Parse charge state
+    result.chargeState = payload->chargeState;
 
-    // Bytes 3-4: Output voltage (10 mV units)
-    uint16_t vOut = data[3] | (data[4] << 8);
-    result.outputVoltage = vOut * 0.01f;
+    // Parse error code
+    result.errorCode = payload->errorCode;
 
-    // Bytes 5-6: Output current (10 mA units)
-    uint16_t iOut = data[5] | (data[6] << 8);
-    result.outputCurrent = iOut * 0.01f;
+    // Parse input voltage (10 mV units -> volts)
+    result.inputVoltage = payload->inputVoltage * 0.01f;
 
-    // Byte 7: Error code
-    result.errorCode = data[7];
+    // Parse output voltage (10 mV units -> volts)
+    result.outputVoltage = payload->outputVoltage * 0.01f;
+
+    // Parse output current (10 mA units -> amps)
+    result.outputCurrent = payload->outputCurrent * 0.01f;
 
     debugPrint("DC-DC Converter: In=" + String(result.inputVoltage, 2) + "V, Out=" +
                String(result.outputVoltage, 2) + "V, " + String(result.outputCurrent, 2) + "A");
@@ -685,6 +698,7 @@ void VictronBLE::debugPrint(const String& message) {
     }
 }
 
+// XXX Can't we use debugPrintf instead for hex struct etc?
 void VictronBLE::debugPrintHex(const char* label, const uint8_t* data, size_t len) {
     if (!debugEnabled) return;
 

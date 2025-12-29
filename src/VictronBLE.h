@@ -53,38 +53,72 @@ enum SolarChargerState {
     CHARGER_EXTERNAL_CONTROL = 252
 };
 
-// XXX HARD Core structs
-//  Used for decoding
-// But then data is put into specific device structs
-// Which means a lot of overlap - reconsider...
-//  NOTE: c struct vs classes
+// Binary data structures for decoding BLE advertisements
+// Must use __attribute__((packed)) to prevent compiler padding
 
-// Must use the "packed" attribute to make sure the compiler doesn't add any padding to deal with
-// word alignment.
+// Manufacturer data structure (outer envelope)
 typedef struct {
-  uint8_t deviceState;
-  uint8_t errorCode;
-  int16_t batteryVoltage;
-  int16_t batteryCurrent;
-  uint16_t todayYield;
-  uint16_t inputPower;
-  uint8_t outputCurrentLo;  // Low 8 bits of output current (in 0.1 Amp increments)
-  uint8_t outputCurrentHi;  // High 1 bit of ourput current (must mask off unused bits)
-  uint8_t unused[4];
-} __attribute__((packed)) victronPanelData; // XXX Specific type -
-
-typedef struct {
-  uint16_t vendorID;                 // vendor ID
-  uint8_t beaconType;                // Should be 0x10 (Product Advertisement) for the packets we want
-  uint8_t unknownData1[3];           // Unknown data
-  uint8_t victronRecordType;         // Should be 0x01 (Solar Charger) for the packets we want
-  uint16_t nonceDataCounter;         // Nonce
-  uint8_t encryptKeyMatch;           // Should match pre-shared encryption key byte 0
-  uint8_t victronEncryptedData[21];  // (31 bytes max per BLE spec - size of previous elements)
-  uint8_t nullPad;                   // extra byte because toCharArray() adds a \0 byte.
+    uint16_t vendorID;                 // Victron vendor ID (0x02E1)
+    uint8_t beaconType;                // Should be 0x10 (Product Advertisement)
+    uint8_t modelID;                   // Model identifier byte
+    uint8_t readoutType;               // Type of data readout
+    uint8_t victronRecordType;         // Record type (device type)
+    uint16_t nonceDataCounter;         // Nonce for encryption (IV bytes 0-1)
+    uint8_t encryptKeyMatch;           // Should match pre-shared encryption key byte 0
+    uint8_t victronEncryptedData[21];  // Encrypted payload (max 21 bytes)
 } __attribute__((packed)) victronManufacturerData;
 
-// XXX End of new bit above
+// Decrypted payload structures for each device type
+
+// Solar Charger decrypted payload
+typedef struct {
+    uint8_t deviceState;               // Charge state (SolarChargerState enum)
+    uint8_t errorCode;                 // Error code
+    int16_t batteryVoltage;            // Battery voltage in 10mV units
+    int16_t batteryCurrent;            // Battery current in 10mA units (signed)
+    uint16_t yieldToday;               // Yield today in 10Wh units
+    uint16_t inputPower;               // PV power in 1W units
+    uint16_t loadCurrent;              // Load current in 10mA units (0xFFFF = no load)
+    uint8_t reserved[2];               // Reserved bytes
+} __attribute__((packed)) victronSolarChargerPayload;
+
+// Battery Monitor decrypted payload
+typedef struct {
+    uint16_t remainingMins;            // Time remaining in minutes
+    uint16_t batteryVoltage;           // Battery voltage in 10mV units
+    uint8_t alarms;                    // Alarm bits
+    uint16_t auxData;                  // Aux voltage (10mV) or temperature (0.01K)
+    uint8_t currentLow;                // Battery current bits 0-7
+    uint8_t currentMid;                // Battery current bits 8-15
+    uint8_t currentHigh_consumedLow;   // Current bits 16-21 (low 6 bits), consumed bits 0-1 (high 2 bits)
+    uint8_t consumedMid;               // Consumed Ah bits 2-9
+    uint8_t consumedHigh;              // Consumed Ah bits 10-17
+    uint16_t soc;                      // State of charge in 0.1% units (10-bit value)
+    uint8_t reserved[2];               // Reserved bytes
+} __attribute__((packed)) victronBatteryMonitorPayload;
+
+// Inverter decrypted payload
+typedef struct {
+    uint8_t deviceState;               // Device state
+    uint8_t errorCode;                 // Error code
+    uint16_t batteryVoltage;           // Battery voltage in 10mV units
+    int16_t batteryCurrent;            // Battery current in 10mA units (signed)
+    uint8_t acPowerLow;                // AC Power bits 0-7
+    uint8_t acPowerMid;                // AC Power bits 8-15
+    uint8_t acPowerHigh;               // AC Power bits 16-23 (signed 24-bit)
+    uint8_t alarms;                    // Alarm bits
+    uint8_t reserved[4];               // Reserved bytes
+} __attribute__((packed)) victronInverterPayload;
+
+// DC-DC Converter decrypted payload
+typedef struct {
+    uint8_t chargeState;               // Charge state
+    uint8_t errorCode;                 // Error code
+    uint16_t inputVoltage;             // Input voltage in 10mV units
+    uint16_t outputVoltage;            // Output voltage in 10mV units
+    uint16_t outputCurrent;            // Output current in 10mA units
+    uint8_t reserved[6];               // Reserved bytes
+} __attribute__((packed)) victronDCDCConverterPayload;
 
 // Base structure for all device data
 struct VictronDeviceData {
