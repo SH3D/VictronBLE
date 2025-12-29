@@ -296,13 +296,15 @@ private:
     uint32_t scanDuration;
     bool initialized;
 
+    // XXX Experiment with actual victron data
+    victronManufacturerData manufacturerData;
+
     // Internal methods
     bool hexStringToBytes(const String& hex, uint8_t* bytes, size_t len);
     bool decryptAdvertisement(const uint8_t* encrypted, size_t encLen,
                               const uint8_t* key, const uint8_t* iv,
                               uint8_t* decrypted);
-    bool parseAdvertisement(const uint8_t* manufacturerData, size_t len,
-                            const String& macAddress);
+    bool parseAdvertisement(const String& macAddress);
     void processDevice(BLEAdvertisedDevice advertisedDevice);
 
     VictronDeviceData* createDeviceData(VictronDeviceType type);

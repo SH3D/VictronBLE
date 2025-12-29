@@ -132,39 +132,47 @@ void VictronBLE::loop() {
 
 // BLE callback implementation
 void VictronBLEAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice) {
+    // XXX why victronBLE and not just this? or nothing since inside same object - to do with callback?
     if (victronBLE) {
-        // Debug: Log all discovered BLE devices
-        if (victronBLE->debugEnabled) {
-            String mac = victronBLE->macAddressToString(advertisedDevice.getAddress());
-            String debugMsg = "BLE Device: " + mac;
-            debugMsg += ", RSSI: " + String(advertisedDevice.getRSSI()) + " dBm";
-
-            if (advertisedDevice.haveName()) {
-                debugMsg += ", Name: " + String(advertisedDevice.getName().c_str());
-            }
-
-            if (advertisedDevice.haveManufacturerData()) {
-                std::string mfgData = advertisedDevice.getManufacturerData();
-                if (mfgData.length() >= 2) {
-                    uint16_t mfgId = (uint8_t)mfgData[1] << 8 | (uint8_t)mfgData[0];
-                    debugMsg += ", Mfg ID: 0x" + String(mfgId, HEX);
-                    if (mfgId == VICTRON_MANUFACTURER_ID) {
-                        debugMsg += " (Victron)";
-                    }
-                }
-            }
-
-            victronBLE->debugPrint(debugMsg);
-        }
-
         victronBLE->processDevice(advertisedDevice);
     }
 }
 
 // Process advertised device
 void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
+    // XXX Improve mac address handling into somewhere...
     String mac = macAddressToString(advertisedDevice.getAddress());
+    // XXX normalize mac not working here, but is in experiment
     String normalizedMAC = normalizeMAC(mac);
+
+    // TODO: Consider skipping with no manufacturer data?
+    memset(&manufacturerData, 0, sizeof(manufacturerData));
+    if (advertisedDevice.haveManufacturerData()) {
+        std::string  mfgData = advertisedDevice.getManufacturerData();
+        // XXX Storing it this way is not thread safe - is that issue on this ESP32?
+        mfgData.copy((char*)&manufacturerData, (mfgData.length() > sizeof(manufacturerData) ? sizeof(manufacturerData) : mfgData.length()));
+        // XXX Rather than copy, we can use pointers to .data
+        // Delete string? Or keep, or alternative buuffer handling
+    }
+
+    // Pointer? XXX
+
+    // Debug: Log all discovered BLE devices
+    if (debugEnabled) {
+        String debugMsg = "";
+
+        debugMsg += "BLE Device: " + mac;
+        debugMsg += ", RSSI: " + String(advertisedDevice.getRSSI()) + " dBm";
+        if (advertisedDevice.haveName())
+            debugMsg += ", Name: " + String(advertisedDevice.getName().c_str());
+
+        debugMsg += ", Mfg ID: 0x" + String(manufacturerData.vendorID, HEX);
+        if (manufacturerData.vendorID == VICTRON_MANUFACTURER_ID) {
+            debugMsg += " (Victron)";
+        }
+
+        debugPrint(debugMsg);
+    }
 
     // Check if this is one of our configured devices
     auto it = devices.find(normalizedMAC);
@@ -172,60 +180,41 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
 
         // XXX Check if the device is a Victron device
         //  This needs lots of improvemet and only do in debug
-        if (advertisedDevice.haveManufacturerData()) {
-            std::string mfgData = advertisedDevice.getManufacturerData();
-            if (mfgData.length() >= 2) {
-                uint16_t mfgId = (uint8_t)mfgData[1] << 8 | (uint8_t)mfgData[0];
-                if (mfgId == VICTRON_MANUFACTURER_ID) {
-                    debugPrint("Found unmonitored Victron Device: " + normalizeMAC(mac));
-                    // DeviceInfo* deviceInfo = new DeviceInfo(mac, advertisedDevice.getName());
-                    // devices.insert({normalizedMAC, deviceInfo});
-                    // XXX What type of Victron device is it?
-                    // Check if it's a Victron Energy device
-                    /*
-                    if (advertisedDevice.haveServiceData()) {
-                        std::string serviceData = advertisedDevice.getServiceData();
-                        if (serviceData.length() >= 2) {
-                            uint16_t serviceId = (uint8_t)serviceData[1] << 8 | (uint8_t)serviceData[0];
-                            if (serviceId == VICTRON_ENERGY_SERVICE_ID) {
-                                debugPrint("Found Victron Energy Device: " + mac);
-                            }
-                        }
+        if (manufacturerData.vendorID == VICTRON_MANUFACTURER_ID) {
+            debugPrint("Found unmonitored Victron Device: " + normalizeMAC(mac));
+            // DeviceInfo* deviceInfo = new DeviceInfo(mac, advertisedDevice.getName());
+            // devices.insert({normalizedMAC, deviceInfo});
+            // XXX What type of Victron device is it?
+            // Check if it's a Victron Energy device
+            /*
+            if (advertisedDevice.haveServiceData()) {
+                std::string serviceData = advertisedDevice.getServiceData();
+                if (serviceData.length() >= 2) {
+                    uint16_t serviceId = (uint8_t)serviceData[1] << 8 | (uint8_t)serviceData[0];
+                    if (serviceId == VICTRON_ENERGY_SERVICE_ID) {
+                        debugPrint("Found Victron Energy Device: " + mac);
                     }
-                    */
-
                 }
             }
+            */
         }
-
         return; // Not a device we're monitoring
     }
 
     DeviceInfo* deviceInfo = it->second;
 
-    // Check if device has manufacturer data
-    if (!advertisedDevice.haveManufacturerData()) {
-        return;
-    }
-
-    std::string mfgData = advertisedDevice.getManufacturerData();
-    if (mfgData.length() < 2) {
-        return;
-    }
-    debugPrint("Manufacturer Length = " + String(mfgData.length()));
-
     // XXX Use struct like code in Sh3dNg
 
     // Check if it's Victron (manufacturer ID 0x02E1)
-    uint16_t mfgId = (uint8_t)mfgData[1] << 8 | (uint8_t)mfgData[0];
-    if (mfgId != VICTRON_MANUFACTURER_ID) {
+    if (manufacturerData.vendorID != VICTRON_MANUFACTURER_ID) {
+        debugPrint("Skipping non VICTRON");
         return;
     }
 
     debugPrint("Processing data from: " + deviceInfo->config.name);
 
     // Parse the advertisement
-    if (parseAdvertisement((const uint8_t*)mfgData.data(), mfgData.length(), normalizedMAC)) {
+    if (parseAdvertisement(normalizedMAC)) {
         // Update RSSI
         if (deviceInfo->data) {
             deviceInfo->data->rssi = advertisedDevice.getRSSI();
@@ -235,8 +224,8 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
 }
 
 // Parse advertisement data
-bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
-                                    const String& macAddress) {
+bool VictronBLE::parseAdvertisement(const String& macAddress) {
+    // XXX We already searched above - try not to again?
     auto it = devices.find(macAddress);
     if (it == devices.end()) {
         debugPrint("parseAdvertisement: Device not found");
@@ -245,53 +234,32 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
 
     DeviceInfo* deviceInfo = it->second;
 
-    // Verify minimum size for victronManufacturerData struct
-    if (len < sizeof(victronManufacturerData)) {
-        debugPrint("Manufacturer data too short: " + String(len) + " bytes, expected: " + String(sizeof(victronManufacturerData)));
-        return false;
-    }
-
-    // Cast manufacturer data to struct for easy access
-    const victronManufacturerData* vicData = (const victronManufacturerData*)manufacturerData;
-
     if (debugEnabled) {
-        debugPrint("Vendor ID: 0x" + String(vicData->vendorID, HEX));
-        debugPrint("Beacon Type: 0x" + String(vicData->beaconType, HEX));
-        debugPrint("Model ID: 0x" + String(vicData->modelID, HEX));
-        debugPrint("Readout Type: 0x" + String(vicData->readoutType, HEX));
-        debugPrint("Record Type: 0x" + String(vicData->victronRecordType, HEX));
-        debugPrint("Nonce: 0x" + String(vicData->nonceDataCounter, HEX));
+        debugPrint("Vendor ID: 0x" + String(manufacturerData.vendorID, HEX));
+        debugPrint("Beacon Type: 0x" + String(manufacturerData.beaconType, HEX));
+        debugPrint("Model ID: 0x" + String(manufacturerData.modelID, HEX));
+        debugPrint("Readout Type: 0x" + String(manufacturerData.readoutType, HEX));
+        debugPrint("Record Type: 0x" + String(manufacturerData.victronRecordType, HEX));
+        debugPrint("Nonce: 0x" + String(manufacturerData.nonceDataCounter, HEX));
     }
 
     // Get device type from record type field
-    uint8_t deviceType = vicData->victronRecordType;
+    uint8_t deviceType = manufacturerData.victronRecordType;
 
     // Build IV (initialization vector) from nonce
     // IV is 16 bytes: nonce (2 bytes little-endian) + zeros (14 bytes)
     uint8_t iv[16] = {0};
-    iv[0] = vicData->nonceDataCounter & 0xFF;        // Low byte
-    iv[1] = (vicData->nonceDataCounter >> 8) & 0xFF; // High byte
+    iv[0] = manufacturerData.nonceDataCounter & 0xFF;        // Low byte
+    iv[1] = (manufacturerData.nonceDataCounter >> 8) & 0xFF; // High byte
     // Remaining bytes stay zero
-
-    // Get pointer to encrypted data
-    const uint8_t* encryptedData = vicData->victronEncryptedData;
-    size_t encryptedLen = sizeof(vicData->victronEncryptedData);
-
-    if (debugEnabled) {
-        debugPrintHex("IV", iv, 16);
-        debugPrintHex("Encrypted data", encryptedData, encryptedLen);
-    }
 
     // Decrypt the data
     uint8_t decrypted[32]; // Max expected size
-    if (!decryptAdvertisement(encryptedData, encryptedLen,
+    if (!decryptAdvertisement(manufacturerData.victronEncryptedData,
+                              sizeof(manufacturerData.victronEncryptedData),
                               deviceInfo->encryptionKeyBytes, iv, decrypted)) {
         lastError = "Decryption failed";
         return false;
-    }
-
-    if (debugEnabled) {
-        debugPrintHex("Decrypted data", decrypted, encryptedLen);
     }
 
     // Parse based on device type
@@ -300,14 +268,14 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
     switch (deviceType) {
         case DEVICE_TYPE_SOLAR_CHARGER:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_SOLAR_CHARGER) {
-                parseOk = parseSolarCharger(decrypted, encryptedLen,
+                parseOk = parseSolarCharger(decrypted, sizeof(decrypted),
                                            *(SolarChargerData*)deviceInfo->data);
             }
             break;
 
         case DEVICE_TYPE_BATTERY_MONITOR:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_BATTERY_MONITOR) {
-                parseOk = parseBatteryMonitor(decrypted, encryptedLen,
+                parseOk = parseBatteryMonitor(decrypted, sizeof(decrypted),
                                              *(BatteryMonitorData*)deviceInfo->data);
             }
             break;
@@ -317,14 +285,14 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
         case DEVICE_TYPE_MULTI_RS:
         case DEVICE_TYPE_VE_BUS:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_INVERTER) {
-                parseOk = parseInverter(decrypted, encryptedLen,
+                parseOk = parseInverter(decrypted, sizeof(decrypted),
                                        *(InverterData*)deviceInfo->data);
             }
             break;
 
         case DEVICE_TYPE_DCDC_CONVERTER:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_DCDC_CONVERTER) {
-                parseOk = parseDCDCConverter(decrypted, encryptedLen,
+                parseOk = parseDCDCConverter(decrypted, sizeof(decrypted),
                                             *(DCDCConverterData*)deviceInfo->data);
             }
             break;
@@ -363,6 +331,7 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
 }
 
 // Decrypt advertisement using AES-128-CTR
+// XX Compare mbedlts_aes vs esp_aes
 bool VictronBLE::decryptAdvertisement(const uint8_t* encrypted, size_t encLen,
                                       const uint8_t* key, const uint8_t* iv,
                                       uint8_t* decrypted) {

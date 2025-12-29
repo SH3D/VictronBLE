@@ -1,6 +1,6 @@
 /*
 
-TODO
+Scott's original test code - this does work for MPPT chargers - use it as a base
 
 */
 

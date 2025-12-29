@@ -208,24 +208,6 @@ void setup() {
         DEVICE_TYPE_SOLAR_CHARGER                    // Device type
     );
 
-
-    /*
-     *
-     [VictronBLE] Encrypted data: A0 01 83 2C 0E CF D6 04 89 72 6E 81 56 E4 2D F1 83
-     [VictronBLE] IV: 02 58 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-     [VictronBLE] Decrypted data: E1 1C 99 32 D5 7E 81 A3 EB 8C 25 97 3E 0E DD 2D C4
-     [VictronBLE] Unknown device type: 0x10
-     [VictronBLE] BLE Device: 3ffd0148:3ffd014e, RSSI: -27 dBm
-     [VictronBLE] BLE Device: 3ffd0148:3ffd014e, RSSI: -81 dBm, Mfg ID: 0x2e1 (Victron)
-     [VictronBLE] Processing data from: Rainbow48Vc
-     [VictronBLE] Encrypted data: A0 01 83 2C 0E CF D6 04 89 72 6E 81 56 E4 2D F1 83
-     [VictronBLE] IV: 02 58 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-     [VictronBLE] Decrypted data: E1 1C 99 32 D5 7E 81 A3 EB 8C 25 97 3E 0E DD 2D C4
-     [VictronBLE] Unknown device type: 0x10
-     [VictronBLE] BLE Device: 3ffd0148:3ffd014e, RSSI: -49 dBm, Mfg ID: 0x75
-     [VictronBLE] BLE Device: 3ffd0148:3ffd014e, RSSI: -26 dBm
-     */
-
     // Example: Solar Charger #1
     /*
     victron.addDevice(
