@@ -96,7 +96,11 @@ bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
 
     devices[normalizedMAC] = info;
 
-    debugPrint("Added device: " + config.name + " (" + normalizedMAC + ")");
+    debugPrint("Added device: " + config.name + " (MAC: " + normalizedMAC + ")");
+    if (debugEnabled) {
+        debugPrint("  Original MAC input: " + config.macAddress);
+        debugPrint("  Stored normalized: " + normalizedMAC);
+    }
 
     return true;
 }
@@ -140,16 +144,20 @@ void VictronBLEAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertise
 
 // Process advertised device
 void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
-    // XXX Improve mac address handling into somewhere...
+    // Get MAC address from the advertised device
     String mac = macAddressToString(advertisedDevice.getAddress());
-    // XXX normalize mac not working here, but is in experiment
     String normalizedMAC = normalizeMAC(mac);
+    
+    if (debugEnabled) {
+        debugPrint("Raw MAC: " + mac + " -> Normalized: " + normalizedMAC);
+    }
 
     // TODO: Consider skipping with no manufacturer data?
     memset(&manufacturerData, 0, sizeof(manufacturerData));
     if (advertisedDevice.haveManufacturerData()) {
         std::string  mfgData = advertisedDevice.getManufacturerData();
         // XXX Storing it this way is not thread safe - is that issue on this ESP32?
+        debugPrint("Getting manufacturer data: Size=" + String(mfgData.length()));
         mfgData.copy((char*)&manufacturerData, (mfgData.length() > sizeof(manufacturerData) ? sizeof(manufacturerData) : mfgData.length()));
         // XXX Rather than copy, we can use pointers to .data
         // Delete string? Or keep, or alternative buuffer handling
@@ -643,12 +651,8 @@ bool VictronBLE::hexStringToBytes(const String& hex, uint8_t* bytes, size_t len)
 
 // Helper: MAC address to string
 String VictronBLE::macAddressToString(BLEAddress address) {
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            address.getNative()[0], address.getNative()[1],
-            address.getNative()[2], address.getNative()[3],
-            address.getNative()[4], address.getNative()[5]);
-    return String(macStr);
+    // Use the BLEAddress toString() method which provides consistent formatting
+    return String(address.toString().c_str());
 }
 
 // Helper: Normalize MAC address format
