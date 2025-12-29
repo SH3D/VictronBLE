@@ -58,16 +58,15 @@ enum SolarChargerState {
 
 // Manufacturer data structure (outer envelope)
 typedef struct {
-    uint16_t vendorID;                 // Victron vendor ID (0x02E1)
-    uint8_t beaconType;                // Should be 0x10 (Product Advertisement)
-    uint8_t modelID;                   // Model identifier byte
-    uint8_t readoutType;               // Type of data readout
-    uint8_t victronRecordType;         // Record type (device type)
-    uint16_t nonceDataCounter;         // Nonce for encryption (IV bytes 0-1)
-    uint8_t encryptKeyMatch;           // Should match pre-shared encryption key byte 0
-    uint8_t victronEncryptedData[21];  // Encrypted payload (max 21 bytes)
+  uint16_t vendorID;                 // vendor ID
+  uint8_t beaconType;                // Should be 0x10 (Product Advertisement) for the packets we want
+  uint8_t unknownData1[3];           // Unknown data
+  uint8_t victronRecordType;         // Should be 0x01 (Solar Charger) for the packets we want
+  uint16_t nonceDataCounter;         // Nonce
+  uint8_t encryptKeyMatch;           // Should match pre-shared encryption key byte 0
+  uint8_t victronEncryptedData[21];  // (31 bytes max per BLE spec - size of previous elements)
+  uint8_t nullPad;                   // extra byte because toCharArray() adds a \0 byte.
 } __attribute__((packed)) victronManufacturerData;
-
 // Decrypted payload structures for each device type
 
 // Solar Charger decrypted payload

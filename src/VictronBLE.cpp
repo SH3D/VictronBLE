@@ -147,7 +147,7 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
     // Get MAC address from the advertised device
     String mac = macAddressToString(advertisedDevice.getAddress());
     String normalizedMAC = normalizeMAC(mac);
-    
+
     if (debugEnabled) {
         debugPrint("Raw MAC: " + mac + " -> Normalized: " + normalizedMAC);
     }
@@ -244,15 +244,14 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
 
     if (debugEnabled) {
         debugPrint("Vendor ID: 0x" + String(manufacturerData.vendorID, HEX));
+        // XXX What is beaconType and modelID and readoutType
         debugPrint("Beacon Type: 0x" + String(manufacturerData.beaconType, HEX));
-        debugPrint("Model ID: 0x" + String(manufacturerData.modelID, HEX));
-        debugPrint("Readout Type: 0x" + String(manufacturerData.readoutType, HEX));
+        // debugPrint("Model ID: 0x" + String(manufacturerData.modelID, HEX));
+        // debugPrint("Readout Type: 0x" + String(manufacturerData.readoutType, HEX));
+        // recordType - e.g. MPPT ?
         debugPrint("Record Type: 0x" + String(manufacturerData.victronRecordType, HEX));
         debugPrint("Nonce: 0x" + String(manufacturerData.nonceDataCounter, HEX));
     }
-
-    // Get device type from record type field
-    uint8_t deviceType = manufacturerData.victronRecordType;
 
     // Build IV (initialization vector) from nonce
     // IV is 16 bytes: nonce (2 bytes little-endian) + zeros (14 bytes)
@@ -273,7 +272,7 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
     // Parse based on device type
     bool parseOk = false;
 
-    switch (deviceType) {
+    switch (manufacturerData.victronRecordType) {
         case DEVICE_TYPE_SOLAR_CHARGER:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_SOLAR_CHARGER) {
                 parseOk = parseSolarCharger(decrypted, sizeof(decrypted),
@@ -306,7 +305,7 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
             break;
 
         default:
-            debugPrint("Unknown device type: 0x" + String(deviceType, HEX));
+            debugPrint("Unknown device type: 0x" + String(manufacturerData.victronRecordType, HEX));
             return false;
     }
 
@@ -315,7 +314,7 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
 
         // Call appropriate callback
         if (callback) {
-            switch (deviceType) {
+            switch (manufacturerData.victronRecordType) {
                 case DEVICE_TYPE_SOLAR_CHARGER:
                     callback->onSolarChargerData(*(SolarChargerData*)deviceInfo->data);
                     break;
