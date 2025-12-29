@@ -471,8 +471,8 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
 
     // Parse battery current (22-bit signed, 1 mA units)
     // Bits 0-7: currentLow, Bits 8-15: currentMid, Bits 16-21: low 6 bits of currentHigh_consumedLow
-    int32_t current = payload->currentLow | 
-                     (payload->currentMid << 8) | 
+    int32_t current = payload->currentLow |
+                     (payload->currentMid << 8) |
                      ((payload->currentHigh_consumedLow & 0x3F) << 16);
     // Sign extend from 22 bits to 32 bits
     if (current & 0x200000) {
@@ -482,8 +482,8 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
 
     // Parse consumed Ah (18-bit signed, 10 mAh units)
     // Bits 0-1: high 2 bits of currentHigh_consumedLow, Bits 2-9: consumedMid, Bits 10-17: consumedHigh
-    int32_t consumedAh = ((payload->currentHigh_consumedLow & 0xC0) >> 6) | 
-                        (payload->consumedMid << 2) | 
+    int32_t consumedAh = ((payload->currentHigh_consumedLow & 0xC0) >> 6) |
+                        (payload->consumedMid << 2) |
                         (payload->consumedHigh << 10);
     // Sign extend from 18 bits to 32 bits
     if (consumedAh & 0x20000) {
@@ -520,8 +520,8 @@ bool VictronBLE::parseInverter(const uint8_t* data, size_t len, InverterData& re
     result.batteryCurrent = payload->batteryCurrent * 0.01f;
 
     // Parse AC Power (signed 24-bit, 1 W units)
-    int32_t acPower = payload->acPowerLow | 
-                     (payload->acPowerMid << 8) | 
+    int32_t acPower = payload->acPowerLow |
+                     (payload->acPowerMid << 8) |
                      (payload->acPowerHigh << 16);
     // Sign extend from 24 bits to 32 bits
     if (acPower & 0x800000) {
@@ -698,6 +698,7 @@ void VictronBLE::debugPrint(const String& message) {
     }
 }
 
+// XXX Can't we use debugPrintf instead for hex struct etc?
 void VictronBLE::debugPrintHex(const char* label, const uint8_t* data, size_t len) {
     if (!debugEnabled) return;
 
