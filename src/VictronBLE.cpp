@@ -212,6 +212,7 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
     if (mfgData.length() < 2) {
         return;
     }
+    debugPrint("Manufacturer Length = " + String(mfgData.length()));
 
     // XXX Use struct like code in Sh3dNg
 
@@ -246,7 +247,7 @@ bool VictronBLE::parseAdvertisement(const uint8_t* manufacturerData, size_t len,
 
     // Verify minimum size for victronManufacturerData struct
     if (len < sizeof(victronManufacturerData)) {
-        debugPrint("Manufacturer data too short: " + String(len) + " bytes");
+        debugPrint("Manufacturer data too short: " + String(len) + " bytes, expected: " + String(sizeof(victronManufacturerData)));
         return false;
     }
 

@@ -165,6 +165,9 @@ void setup() {
     // Add your devices here
     // Replace with your actual MAC addresses and encryption keys
 
+    // CORRECT in Alternative
+    // Rainbow48V at MAC e4:05:42:34:14:f3
+
     // Temporary - Scott Example
     victron.addDevice(
         "Rainbow48V",                              // Device name
@@ -173,6 +176,7 @@ void setup() {
         DEVICE_TYPE_SOLAR_CHARGER                    // Device type
     );
 
+    // XXX These numbers make no sesne, one above is correct - wrong MAC?
     victron.addDevice(
         "Rainbow48Vb",                              // Device name
         "3ffd00b83ffd00be",
@@ -187,6 +191,23 @@ void setup() {
         "0ec3adf7433dd61793ff2f3b8ad32ed8",         // Encryption key (32 hex chars)
         DEVICE_TYPE_SOLAR_CHARGER                    // Device type
     );
+
+    // WHY this one work?
+    victron.addDevice(
+        "Rainbow48Vd",                              // Device name
+        "3fca91c83fca91ce",
+        "0ec3adf7433dd61793ff2f3b8ad32ed8",         // Encryption key (32 hex chars)
+        DEVICE_TYPE_SOLAR_CHARGER                    // Device type
+    );
+
+    // WHY this one work?
+    victron.addDevice(
+        "Rainbow48Vf",                              // Device name
+        "3fcf38283fcf382e",
+        "0ec3adf7433dd61793ff2f3b8ad32ed8",         // Encryption key (32 hex chars)
+        DEVICE_TYPE_SOLAR_CHARGER                    // Device type
+    );
+
 
     /*
      *
