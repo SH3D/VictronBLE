@@ -1,5 +1,5 @@
 {
-  "name": "VictronBLE",
+  "name": "victronble",
   "version": "0.2.1",
   "description": "ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements. Supports SmartSolar MPPT, SmartShunt, BMV, MultiPlus, Orion and other Victron devices.",
   "keywords": "victron, ble, bluetooth, solar, mppt, battery, smartshunt, smartsolar, bmv, inverter, multiplus, esp32, iot, energy, monitoring",
