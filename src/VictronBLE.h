@@ -313,7 +313,6 @@ private:
     bool parseDCDCConverter(const uint8_t* data, size_t len, DCDCConverterData& result);
 
     void debugPrint(const String& message);
-    void debugPrintHex(const char* label, const uint8_t* data, size_t len);
 
     String macAddressToString(BLEAddress address);
     String normalizeMAC(String mac);

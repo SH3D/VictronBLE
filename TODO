@@ -6,3 +6,15 @@
     * Sh3dNg version and examples uses structs to get data - seems to work
     * Example generated uses manually managing a string
     * Reconsider what is best and use
+
+# Debugging
+
+Use standard ESP32 debugging stuff. Handler should not be string but more like printf? Consider alternatives
+
+Make sure debugging can be to file or serial etc
+
+# Decrypting
+
+Review 2 methods of decrypting and check it is working correctly
+
+Seems mbedTLS is better choice as auotmatic hardware support even on ESP32 - where as the esp_aes version is not portable.

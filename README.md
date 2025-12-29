@@ -10,6 +10,8 @@ This is an initial release (v0.1.1) and has not yet been tested with real Victro
 
 Why another library? Most of the Victron BLE examples are built into other frameworks (e.g. ESPHome) and I want a library that can be used in all ESP32 systems, including ESPHome or other frameworks. With long term plan to try and move others to this library and improve code with many eyes.
 
+Currently supportin ESP32 S and C series (tested on older ESP32, and ESP32-S3 and ESP32-C3). Other chipsets can be added with abstraction of Bluetooth code.
+
 ## Features
 
 - ✅ **Multiple Device Support**: Monitor multiple Victron devices simultaneously

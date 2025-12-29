@@ -42,6 +42,7 @@ bool VictronBLE::begin(uint32_t scanDuration) {
 
     if (!pBLEScan) {
         lastError = "Failed to create BLE scanner";
+        debugPrint(lastError);
         return false;
     }
 
@@ -60,11 +61,13 @@ bool VictronBLE::begin(uint32_t scanDuration) {
 bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
     if (config.macAddress.length() == 0) {
         lastError = "MAC address cannot be empty";
+        debugPrint(lastError);
         return false;
     }
 
     if (config.encryptionKey.length() != 32) {
         lastError = "Encryption key must be 32 hex characters";
+        debugPrint(lastError);
         return false;
     }
 
@@ -83,6 +86,7 @@ bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
     // Convert encryption key from hex string to bytes
     if (!hexStringToBytes(config.encryptionKey, info->encryptionKeyBytes, 16)) {
         lastError = "Invalid encryption key format";
+        debugPrint(lastError);
         delete info;
         return false;
     }
@@ -136,7 +140,6 @@ void VictronBLE::loop() {
 
 // BLE callback implementation
 void VictronBLEAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice) {
-    // XXX why victronBLE and not just this? or nothing since inside same object - to do with callback?
     if (victronBLE) {
         victronBLE->processDevice(advertisedDevice);
     }
@@ -159,8 +162,6 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
         // XXX Storing it this way is not thread safe - is that issue on this ESP32?
         debugPrint("Getting manufacturer data: Size=" + String(mfgData.length()));
         mfgData.copy((char*)&manufacturerData, (mfgData.length() > sizeof(manufacturerData) ? sizeof(manufacturerData) : mfgData.length()));
-        // XXX Rather than copy, we can use pointers to .data
-        // Delete string? Or keep, or alternative buuffer handling
     }
 
     // Pointer? XXX
@@ -185,7 +186,6 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
     // Check if this is one of our configured devices
     auto it = devices.find(normalizedMAC);
     if (it == devices.end()) {
-
         // XXX Check if the device is a Victron device
         //  This needs lots of improvemet and only do in debug
         if (manufacturerData.vendorID == VICTRON_MANUFACTURER_ID) {
@@ -210,8 +210,6 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
     }
 
     DeviceInfo* deviceInfo = it->second;
-
-    // XXX Use struct like code in Sh3dNg
 
     // Check if it's Victron (manufacturer ID 0x02E1)
     if (manufacturerData.vendorID != VICTRON_MANUFACTURER_ID) {
@@ -244,11 +242,7 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
 
     if (debugEnabled) {
         debugPrint("Vendor ID: 0x" + String(manufacturerData.vendorID, HEX));
-        // XXX What is beaconType and modelID and readoutType
         debugPrint("Beacon Type: 0x" + String(manufacturerData.beaconType, HEX));
-        // debugPrint("Model ID: 0x" + String(manufacturerData.modelID, HEX));
-        // debugPrint("Readout Type: 0x" + String(manufacturerData.readoutType, HEX));
-        // recordType - e.g. MPPT ?
         debugPrint("Record Type: 0x" + String(manufacturerData.victronRecordType, HEX));
         debugPrint("Nonce: 0x" + String(manufacturerData.nonceDataCounter, HEX));
     }
@@ -266,6 +260,7 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
                               sizeof(manufacturerData.victronEncryptedData),
                               deviceInfo->encryptionKeyBytes, iv, decrypted)) {
         lastError = "Decryption failed";
+        debugPrint(lastError);
         return false;
     }
 
@@ -338,7 +333,6 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
 }
 
 // Decrypt advertisement using AES-128-CTR
-// XX Compare mbedlts_aes vs esp_aes
 bool VictronBLE::decryptAdvertisement(const uint8_t* encrypted, size_t encLen,
                                       const uint8_t* key, const uint8_t* iv,
                                       uint8_t* decrypted) {
@@ -666,22 +660,6 @@ String VictronBLE::normalizeMAC(String mac) {
 
 // Debug helpers
 void VictronBLE::debugPrint(const String& message) {
-    if (debugEnabled) {
+    if (debugEnabled)
         Serial.println("[VictronBLE] " + message);
-    }
-}
-
-// XXX Can't we use debugPrintf instead for hex struct etc?
-void VictronBLE::debugPrintHex(const char* label, const uint8_t* data, size_t len) {
-    if (!debugEnabled) return;
-
-    Serial.print("[VictronBLE] ");
-    Serial.print(label);
-    Serial.print(": ");
-    for (size_t i = 0; i < len; i++) {
-        if (data[i] < 0x10) Serial.print("0");
-        Serial.print(data[i], HEX);
-        Serial.print(" ");
-    }
-    Serial.println();
 }
