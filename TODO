@@ -18,3 +18,10 @@ Make sure debugging can be to file or serial etc
 Review 2 methods of decrypting and check it is working correctly
 
 Seems mbedTLS is better choice as auotmatic hardware support even on ESP32 - where as the esp_aes version is not portable.
+
+# Examples
+
+* Multiple threads - scan BLE in the background
+* Example scan anything
+* With and without Callback
+* Platformio.ini files into example data
