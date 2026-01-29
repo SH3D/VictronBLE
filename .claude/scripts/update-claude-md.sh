@@ -1,7 +1,7 @@
 #!/bin/bash
 # Auto-update CLAUDE.md at end of session
 
-CLAUDE_MD="$(git rev-parse --show-toplevel)/CLAUDE.md"
+CLAUDE_MD="$(git rev-parse --show-toplevel)/.claude/CLAUDE.md"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
 
 # Get recent git activity from this session (last hour)
