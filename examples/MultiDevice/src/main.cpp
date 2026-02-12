@@ -30,8 +30,14 @@ VictronBLE victron;
 // Device callback class - gets called when new data arrives
 class MyVictronCallback : public VictronDeviceCallback {
 public:
+    uint32_t solarChargerCount = 0;
+    uint32_t batteryMonitorCount = 0;
+    uint32_t inverterCount = 0;
+    uint32_t dcdcConverterCount = 0;
+
     void onSolarChargerData(const SolarChargerData& data) override {
-        Serial.println("\n=== Solar Charger: " + data.deviceName + " ===");
+        solarChargerCount++;
+        Serial.println("\n=== Solar Charger: " + data.deviceName + " (#" + String(solarChargerCount) + ") ===");
         Serial.println("MAC: " + data.macAddress);
         Serial.println("RSSI: " + String(data.rssi) + " dBm");
         Serial.println("State: " + getChargeStateName(data.chargeState));
@@ -47,7 +53,8 @@ public:
     }
 
     void onBatteryMonitorData(const BatteryMonitorData& data) override {
-        Serial.println("\n=== Battery Monitor: " + data.deviceName + " ===");
+        batteryMonitorCount++;
+        Serial.println("\n=== Battery Monitor: " + data.deviceName + " (#" + String(batteryMonitorCount) + ") ===");
         Serial.println("MAC: " + data.macAddress);
         Serial.println("RSSI: " + String(data.rssi) + " dBm");
         Serial.println("Voltage: " + String(data.voltage, 2) + " V");
@@ -84,7 +91,8 @@ public:
     }
 
     void onInverterData(const InverterData& data) override {
-        Serial.println("\n=== Inverter/Charger: " + data.deviceName + " ===");
+        inverterCount++;
+        Serial.println("\n=== Inverter/Charger: " + data.deviceName + " (#" + String(inverterCount) + ") ===");
         Serial.println("MAC: " + data.macAddress);
         Serial.println("RSSI: " + String(data.rssi) + " dBm");
         Serial.println("Battery: " + String(data.batteryVoltage, 2) + " V");
@@ -107,7 +115,8 @@ public:
     }
 
     void onDCDCConverterData(const DCDCConverterData& data) override {
-        Serial.println("\n=== DC-DC Converter: " + data.deviceName + " ===");
+        dcdcConverterCount++;
+        Serial.println("\n=== DC-DC Converter: " + data.deviceName + " (#" + String(dcdcConverterCount) + ") ===");
         Serial.println("MAC: " + data.macAddress);
         Serial.println("RSSI: " + String(data.rssi) + " dBm");
         Serial.println("Input: " + String(data.inputVoltage, 2) + " V");
@@ -157,7 +166,7 @@ void setup() {
     }
 
     // Enable debug output (optional)
-    victron.setDebug(true);
+    victron.setDebug(false);
 
     // Set callback for data updates
     victron.setCallback(&callback);
@@ -173,6 +182,13 @@ void setup() {
         "Rainbow48V",                              // Device name
         "E4:05:42:34:14:F3",                        // MAC address
         "0ec3adf7433dd61793ff2f3b8ad32ed8",         // Encryption key (32 hex chars)
+        DEVICE_TYPE_SOLAR_CHARGER                    // Device type
+    );
+
+    victron.addDevice(
+        "ScottTrailer",                              // Device name
+        "e64559783cfb",
+        "3fa658aded4f309b9bc17a2318cb1f56",
         DEVICE_TYPE_SOLAR_CHARGER                    // Device type
     );
 

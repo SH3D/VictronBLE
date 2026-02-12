@@ -26,6 +26,11 @@
       "name": "MultiDevice",
       "base": "examples/MultiDevice",
       "files": ["src/main.cpp"]
+    },
+    {
+      "name": "Logger",
+      "base": "examples/Logger",
+      "files": ["src/main.cpp"]
     }
   ],
   "export": {

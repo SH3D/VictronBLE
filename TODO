@@ -25,3 +25,7 @@ Seems mbedTLS is better choice as auotmatic hardware support even on ESP32 - whe
 * Example scan anything
 * With and without Callback
 * Platformio.ini files into example data
+
+# Logging and Debugging
+
+* The debugging is very verbose and hard to read - maybe group the messages together for repeats

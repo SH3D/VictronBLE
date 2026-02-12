@@ -21,3 +21,36 @@ Arduino/ESP32 library for reading Victron Energy devices via Bluetooth Low Energ
 **Modified files:**
 - TODO
 
+
+### Session: 2026-02-11 13:51
+**Modified files:**
+- .claude/CLAUDE.md
+- .claude/scripts/update-claude-md.sh
+- TODO
+- examples/MultiDevice/src/main.cpp
+
+
+### Session: 2026-02-11 15:57
+**Modified files:**
+- .claude/CLAUDE.md
+- .claude/scripts/update-claude-md.sh
+- TODO
+- examples/MultiDevice/src/main.cpp
+
+
+### Session: 2026-02-12 18:02
+**Modified files:**
+- .claude/CLAUDE.md
+- .claude/scripts/update-claude-md.sh
+- TODO
+- examples/MultiDevice/src/main.cpp
+
+
+### Session: 2026-02-12 18:02
+**Modified files:**
+- .claude/CLAUDE.md
+- .claude/scripts/update-claude-md.sh
+- TODO
+- examples/MultiDevice/src/main.cpp
+- library.json
+
