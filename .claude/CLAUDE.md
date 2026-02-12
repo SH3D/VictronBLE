@@ -102,3 +102,19 @@ Arduino/ESP32 library for reading Victron Energy devices via Bluetooth Low Energ
 - library.json
 - library.properties
 
+
+### Session: 2026-02-12 18:23
+**Commits:**
+```
+a843eb9 Keep v0.3.1
+5a210fb Experimenting with a claude file and created new logging example
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- README.md
+- VERSIONS
+- library.json
+- library.properties
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+

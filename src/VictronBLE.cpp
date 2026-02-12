@@ -10,8 +10,8 @@
 
 // Constructor
 VictronBLE::VictronBLE()
-    : pBLEScan(nullptr), callback(nullptr), debugEnabled(false),
-      scanDuration(5), initialized(false) {
+    : pBLEScan(nullptr), scanCallback(nullptr), callback(nullptr),
+      debugEnabled(false), scanDuration(5), initialized(false) {
 }
 
 // Destructor
@@ -24,35 +24,38 @@ VictronBLE::~VictronBLE() {
     if (pBLEScan) {
         pBLEScan->stop();
     }
+
+    delete scanCallback;
 }
 
 // Initialize BLE
 bool VictronBLE::begin(uint32_t scanDuration) {
     if (initialized) {
-        debugPrint("VictronBLE already initialized");
+        if (debugEnabled) debugPrint("VictronBLE already initialized");
         return true;
     }
 
     this->scanDuration = scanDuration;
 
-    debugPrint("Initializing VictronBLE...");
+    if (debugEnabled) debugPrint("Initializing VictronBLE...");
 
     BLEDevice::init("VictronBLE");
     pBLEScan = BLEDevice::getScan();
 
     if (!pBLEScan) {
         lastError = "Failed to create BLE scanner";
-        debugPrint(lastError);
+        if (debugEnabled) debugPrint(lastError);
         return false;
     }
 
-    pBLEScan->setAdvertisedDeviceCallbacks(new VictronBLEAdvertisedDeviceCallbacks(this), true);
+    scanCallback = new VictronBLEAdvertisedDeviceCallbacks(this);
+    pBLEScan->setAdvertisedDeviceCallbacks(scanCallback, true);
     pBLEScan->setActiveScan(false); // Passive scan - lower power
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(99);
 
     initialized = true;
-    debugPrint("VictronBLE initialized successfully");
+    if (debugEnabled) debugPrint("VictronBLE initialized successfully");
 
     return true;
 }
@@ -61,13 +64,13 @@ bool VictronBLE::begin(uint32_t scanDuration) {
 bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
     if (config.macAddress.length() == 0) {
         lastError = "MAC address cannot be empty";
-        debugPrint(lastError);
+        if (debugEnabled) debugPrint(lastError);
         return false;
     }
 
     if (config.encryptionKey.length() != 32) {
         lastError = "Encryption key must be 32 hex characters";
-        debugPrint(lastError);
+        if (debugEnabled) debugPrint(lastError);
         return false;
     }
 
@@ -75,7 +78,7 @@ bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
 
     // Check if device already exists
     if (devices.find(normalizedMAC) != devices.end()) {
-        debugPrint("Device " + normalizedMAC + " already exists, updating config");
+        if (debugEnabled) debugPrint("Device " + normalizedMAC + " already exists, updating config");
         delete devices[normalizedMAC];
     }
 
@@ -86,7 +89,7 @@ bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
     // Convert encryption key from hex string to bytes
     if (!hexStringToBytes(config.encryptionKey, info->encryptionKeyBytes, 16)) {
         lastError = "Invalid encryption key format";
-        debugPrint(lastError);
+        if (debugEnabled) debugPrint(lastError);
         delete info;
         return false;
     }
@@ -100,8 +103,8 @@ bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
 
     devices[normalizedMAC] = info;
 
-    debugPrint("Added device: " + config.name + " (MAC: " + normalizedMAC + ")");
     if (debugEnabled) {
+        debugPrint("Added device: " + config.name + " (MAC: " + normalizedMAC + ")");
         debugPrint("  Original MAC input: " + config.macAddress);
         debugPrint("  Stored normalized: " + normalizedMAC);
     }
@@ -109,21 +112,21 @@ bool VictronBLE::addDevice(const VictronDeviceConfig& config) {
     return true;
 }
 
-bool VictronBLE::addDevice(String name, String macAddress, String encryptionKey,
+bool VictronBLE::addDevice(const String& name, const String& macAddress, const String& encryptionKey,
                            VictronDeviceType expectedType) {
     VictronDeviceConfig config(name, macAddress, encryptionKey, expectedType);
     return addDevice(config);
 }
 
 // Remove a device
-void VictronBLE::removeDevice(String macAddress) {
+void VictronBLE::removeDevice(const String& macAddress) {
     String normalizedMAC = normalizeMAC(macAddress);
 
     auto it = devices.find(normalizedMAC);
     if (it != devices.end()) {
         delete it->second;
         devices.erase(it);
-        debugPrint("Removed device: " + normalizedMAC);
+        if (debugEnabled) debugPrint("Removed device: " + normalizedMAC);
     }
 }
 
@@ -146,7 +149,7 @@ void VictronBLEAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertise
 }
 
 // Process advertised device
-void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
+void VictronBLE::processDevice(BLEAdvertisedDevice& advertisedDevice) {
     // Get MAC address from the advertised device
     String mac = macAddressToString(advertisedDevice.getAddress());
     String normalizedMAC = normalizeMAC(mac);
@@ -155,28 +158,25 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
         debugPrint("Raw MAC: " + mac + " -> Normalized: " + normalizedMAC);
     }
 
-    // TODO: Consider skipping with no manufacturer data?
-    memset(&manufacturerData, 0, sizeof(manufacturerData));
+    // Parse manufacturer data into local struct
+    victronManufacturerData mfgData;
+    memset(&mfgData, 0, sizeof(mfgData));
     if (advertisedDevice.haveManufacturerData()) {
-        std::string  mfgData = advertisedDevice.getManufacturerData();
-        // XXX Storing it this way is not thread safe - is that issue on this ESP32?
-        debugPrint("Getting manufacturer data: Size=" + String(mfgData.length()));
-        mfgData.copy((char*)&manufacturerData, (mfgData.length() > sizeof(manufacturerData) ? sizeof(manufacturerData) : mfgData.length()));
+        std::string rawMfgData = advertisedDevice.getManufacturerData();
+        if (debugEnabled) debugPrint("Getting manufacturer data: Size=" + String(rawMfgData.length()));
+        rawMfgData.copy(reinterpret_cast<char*>(&mfgData),
+                        (rawMfgData.length() > sizeof(mfgData) ? sizeof(mfgData) : rawMfgData.length()));
     }
-
-    // Pointer? XXX
 
     // Debug: Log all discovered BLE devices
     if (debugEnabled) {
-        String debugMsg = "";
-
-        debugMsg += "BLE Device: " + mac;
+        String debugMsg = "BLE Device: " + mac;
         debugMsg += ", RSSI: " + String(advertisedDevice.getRSSI()) + " dBm";
         if (advertisedDevice.haveName())
             debugMsg += ", Name: " + String(advertisedDevice.getName().c_str());
 
-        debugMsg += ", Mfg ID: 0x" + String(manufacturerData.vendorID, HEX);
-        if (manufacturerData.vendorID == VICTRON_MANUFACTURER_ID) {
+        debugMsg += ", Mfg ID: 0x" + String(mfgData.vendorID, HEX);
+        if (mfgData.vendorID == VICTRON_MANUFACTURER_ID) {
             debugMsg += " (Victron)";
         }
 
@@ -186,25 +186,8 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
     // Check if this is one of our configured devices
     auto it = devices.find(normalizedMAC);
     if (it == devices.end()) {
-        // XXX Check if the device is a Victron device
-        //  This needs lots of improvemet and only do in debug
-        if (manufacturerData.vendorID == VICTRON_MANUFACTURER_ID) {
-            debugPrint("Found unmonitored Victron Device: " + normalizeMAC(mac));
-            // DeviceInfo* deviceInfo = new DeviceInfo(mac, advertisedDevice.getName());
-            // devices.insert({normalizedMAC, deviceInfo});
-            // XXX What type of Victron device is it?
-            // Check if it's a Victron Energy device
-            /*
-            if (advertisedDevice.haveServiceData()) {
-                std::string serviceData = advertisedDevice.getServiceData();
-                if (serviceData.length() >= 2) {
-                    uint16_t serviceId = (uint8_t)serviceData[1] << 8 | (uint8_t)serviceData[0];
-                    if (serviceId == VICTRON_ENERGY_SERVICE_ID) {
-                        debugPrint("Found Victron Energy Device: " + mac);
-                    }
-                }
-            }
-            */
+        if (debugEnabled && mfgData.vendorID == VICTRON_MANUFACTURER_ID) {
+            debugPrint("Found unmonitored Victron Device: " + normalizedMAC);
         }
         return; // Not a device we're monitoring
     }
@@ -212,15 +195,15 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
     DeviceInfo* deviceInfo = it->second;
 
     // Check if it's Victron (manufacturer ID 0x02E1)
-    if (manufacturerData.vendorID != VICTRON_MANUFACTURER_ID) {
-        debugPrint("Skipping non VICTRON");
+    if (mfgData.vendorID != VICTRON_MANUFACTURER_ID) {
+        if (debugEnabled) debugPrint("Skipping non VICTRON");
         return;
     }
 
-    debugPrint("Processing data from: " + deviceInfo->config.name);
+    if (debugEnabled) debugPrint("Processing data from: " + deviceInfo->config.name);
 
     // Parse the advertisement
-    if (parseAdvertisement(normalizedMAC)) {
+    if (parseAdvertisement(deviceInfo, mfgData)) {
         // Update RSSI
         if (deviceInfo->data) {
             deviceInfo->data->rssi = advertisedDevice.getRSSI();
@@ -230,55 +213,47 @@ void VictronBLE::processDevice(BLEAdvertisedDevice advertisedDevice) {
 }
 
 // Parse advertisement data
-bool VictronBLE::parseAdvertisement(const String& macAddress) {
-    // XXX We already searched above - try not to again?
-    auto it = devices.find(macAddress);
-    if (it == devices.end()) {
-        debugPrint("parseAdvertisement: Device not found");
-        return false;
-    }
-
-    DeviceInfo* deviceInfo = it->second;
-
+bool VictronBLE::parseAdvertisement(DeviceInfo* deviceInfo, const victronManufacturerData& mfgData) {
     if (debugEnabled) {
-        debugPrint("Vendor ID: 0x" + String(manufacturerData.vendorID, HEX));
-        debugPrint("Beacon Type: 0x" + String(manufacturerData.beaconType, HEX));
-        debugPrint("Record Type: 0x" + String(manufacturerData.victronRecordType, HEX));
-        debugPrint("Nonce: 0x" + String(manufacturerData.nonceDataCounter, HEX));
+        debugPrint("Vendor ID: 0x" + String(mfgData.vendorID, HEX));
+        debugPrint("Beacon Type: 0x" + String(mfgData.beaconType, HEX));
+        debugPrint("Record Type: 0x" + String(mfgData.victronRecordType, HEX));
+        debugPrint("Nonce: 0x" + String(mfgData.nonceDataCounter, HEX));
     }
 
     // Build IV (initialization vector) from nonce
     // IV is 16 bytes: nonce (2 bytes little-endian) + zeros (14 bytes)
     uint8_t iv[16] = {0};
-    iv[0] = manufacturerData.nonceDataCounter & 0xFF;        // Low byte
-    iv[1] = (manufacturerData.nonceDataCounter >> 8) & 0xFF; // High byte
+    iv[0] = mfgData.nonceDataCounter & 0xFF;        // Low byte
+    iv[1] = (mfgData.nonceDataCounter >> 8) & 0xFF;  // High byte
     // Remaining bytes stay zero
 
     // Decrypt the data
-    uint8_t decrypted[32]; // Max expected size
-    if (!decryptAdvertisement(manufacturerData.victronEncryptedData,
-                              sizeof(manufacturerData.victronEncryptedData),
+    const size_t encryptedLen = sizeof(mfgData.victronEncryptedData);
+    uint8_t decrypted[encryptedLen];
+    if (!decryptAdvertisement(mfgData.victronEncryptedData,
+                              encryptedLen,
                               deviceInfo->encryptionKeyBytes, iv, decrypted)) {
         lastError = "Decryption failed";
-        debugPrint(lastError);
+        if (debugEnabled) debugPrint(lastError);
         return false;
     }
 
     // Parse based on device type
     bool parseOk = false;
 
-    switch (manufacturerData.victronRecordType) {
+    switch (mfgData.victronRecordType) {
         case DEVICE_TYPE_SOLAR_CHARGER:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_SOLAR_CHARGER) {
-                parseOk = parseSolarCharger(decrypted, sizeof(decrypted),
-                                           *(SolarChargerData*)deviceInfo->data);
+                parseOk = parseSolarCharger(decrypted, encryptedLen,
+                                           *static_cast<SolarChargerData*>(deviceInfo->data));
             }
             break;
 
         case DEVICE_TYPE_BATTERY_MONITOR:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_BATTERY_MONITOR) {
-                parseOk = parseBatteryMonitor(decrypted, sizeof(decrypted),
-                                             *(BatteryMonitorData*)deviceInfo->data);
+                parseOk = parseBatteryMonitor(decrypted, encryptedLen,
+                                             *static_cast<BatteryMonitorData*>(deviceInfo->data));
             }
             break;
 
@@ -287,20 +262,20 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
         case DEVICE_TYPE_MULTI_RS:
         case DEVICE_TYPE_VE_BUS:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_INVERTER) {
-                parseOk = parseInverter(decrypted, sizeof(decrypted),
-                                       *(InverterData*)deviceInfo->data);
+                parseOk = parseInverter(decrypted, encryptedLen,
+                                       *static_cast<InverterData*>(deviceInfo->data));
             }
             break;
 
         case DEVICE_TYPE_DCDC_CONVERTER:
             if (deviceInfo->data && deviceInfo->data->deviceType == DEVICE_TYPE_DCDC_CONVERTER) {
-                parseOk = parseDCDCConverter(decrypted, sizeof(decrypted),
-                                            *(DCDCConverterData*)deviceInfo->data);
+                parseOk = parseDCDCConverter(decrypted, encryptedLen,
+                                            *static_cast<DCDCConverterData*>(deviceInfo->data));
             }
             break;
 
         default:
-            debugPrint("Unknown device type: 0x" + String(manufacturerData.victronRecordType, HEX));
+            if (debugEnabled) debugPrint("Unknown device type: 0x" + String(mfgData.victronRecordType, HEX));
             return false;
     }
 
@@ -309,21 +284,21 @@ bool VictronBLE::parseAdvertisement(const String& macAddress) {
 
         // Call appropriate callback
         if (callback) {
-            switch (manufacturerData.victronRecordType) {
+            switch (mfgData.victronRecordType) {
                 case DEVICE_TYPE_SOLAR_CHARGER:
-                    callback->onSolarChargerData(*(SolarChargerData*)deviceInfo->data);
+                    callback->onSolarChargerData(*static_cast<SolarChargerData*>(deviceInfo->data));
                     break;
                 case DEVICE_TYPE_BATTERY_MONITOR:
-                    callback->onBatteryMonitorData(*(BatteryMonitorData*)deviceInfo->data);
+                    callback->onBatteryMonitorData(*static_cast<BatteryMonitorData*>(deviceInfo->data));
                     break;
                 case DEVICE_TYPE_INVERTER:
                 case DEVICE_TYPE_INVERTER_RS:
                 case DEVICE_TYPE_MULTI_RS:
                 case DEVICE_TYPE_VE_BUS:
-                    callback->onInverterData(*(InverterData*)deviceInfo->data);
+                    callback->onInverterData(*static_cast<InverterData*>(deviceInfo->data));
                     break;
                 case DEVICE_TYPE_DCDC_CONVERTER:
-                    callback->onDCDCConverterData(*(DCDCConverterData*)deviceInfo->data);
+                    callback->onDCDCConverterData(*static_cast<DCDCConverterData*>(deviceInfo->data));
                     break;
             }
         }
@@ -365,15 +340,14 @@ bool VictronBLE::decryptAdvertisement(const uint8_t* encrypted, size_t encLen,
 // Parse Solar Charger data
 bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, SolarChargerData& result) {
     if (len < sizeof(victronSolarChargerPayload)) {
-        debugPrint("Solar charger data too short: " + String(len) + " bytes");
+        if (debugEnabled) debugPrint("Solar charger data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Cast decrypted data to struct for easy access
-    const victronSolarChargerPayload* payload = (const victronSolarChargerPayload*)data;
+    const auto* payload = reinterpret_cast<const victronSolarChargerPayload*>(data);
 
     // Parse charge state
-    result.chargeState = (SolarChargerState)payload->deviceState;
+    result.chargeState = static_cast<SolarChargerState>(payload->deviceState);
 
     // Parse battery voltage (10 mV units -> volts)
     result.batteryVoltage = payload->batteryVoltage * 0.01f;
@@ -401,9 +375,11 @@ bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, SolarCharger
         result.panelVoltage = 0;
     }
 
-    debugPrint("Solar Charger: " + String(result.batteryVoltage, 2) + "V, " +
-               String(result.batteryCurrent, 2) + "A, " +
-               String(result.panelPower) + "W, State: " + String(result.chargeState));
+    if (debugEnabled) {
+        debugPrint("Solar Charger: " + String(result.batteryVoltage, 2) + "V, " +
+                   String(result.batteryCurrent, 2) + "A, " +
+                   String(result.panelPower) + "W, State: " + String(result.chargeState));
+    }
 
     return true;
 }
@@ -411,12 +387,11 @@ bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, SolarCharger
 // Parse Battery Monitor data
 bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMonitorData& result) {
     if (len < sizeof(victronBatteryMonitorPayload)) {
-        debugPrint("Battery monitor data too short: " + String(len) + " bytes");
+        if (debugEnabled) debugPrint("Battery monitor data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Cast decrypted data to struct for easy access
-    const victronBatteryMonitorPayload* payload = (const victronBatteryMonitorPayload*)data;
+    const auto* payload = reinterpret_cast<const victronBatteryMonitorPayload*>(data);
 
     // Parse remaining time (1 minute units)
     result.remainingMinutes = payload->remainingMins;
@@ -441,7 +416,6 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
     }
 
     // Parse battery current (22-bit signed, 1 mA units)
-    // Bits 0-7: currentLow, Bits 8-15: currentMid, Bits 16-21: low 6 bits of currentHigh_consumedLow
     int32_t current = payload->currentLow |
                      (payload->currentMid << 8) |
                      ((payload->currentHigh_consumedLow & 0x3F) << 16);
@@ -452,7 +426,6 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
     result.current = current * 0.001f; // Convert mA to A
 
     // Parse consumed Ah (18-bit signed, 10 mAh units)
-    // Bits 0-1: high 2 bits of currentHigh_consumedLow, Bits 2-9: consumedMid, Bits 10-17: consumedHigh
     int32_t consumedAh = ((payload->currentHigh_consumedLow & 0xC0) >> 6) |
                         (payload->consumedMid << 2) |
                         (payload->consumedHigh << 10);
@@ -465,8 +438,10 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
     // Parse SOC (10-bit value, 10 = 1.0%)
     result.soc = (payload->soc & 0x3FF) * 0.1f;
 
-    debugPrint("Battery Monitor: " + String(result.voltage, 2) + "V, " +
-               String(result.current, 2) + "A, SOC: " + String(result.soc, 1) + "%");
+    if (debugEnabled) {
+        debugPrint("Battery Monitor: " + String(result.voltage, 2) + "V, " +
+                   String(result.current, 2) + "A, SOC: " + String(result.soc, 1) + "%");
+    }
 
     return true;
 }
@@ -474,12 +449,11 @@ bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMon
 // Parse Inverter data
 bool VictronBLE::parseInverter(const uint8_t* data, size_t len, InverterData& result) {
     if (len < sizeof(victronInverterPayload)) {
-        debugPrint("Inverter data too short: " + String(len) + " bytes");
+        if (debugEnabled) debugPrint("Inverter data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Cast decrypted data to struct for easy access
-    const victronInverterPayload* payload = (const victronInverterPayload*)data;
+    const auto* payload = reinterpret_cast<const victronInverterPayload*>(data);
 
     // Parse device state
     result.state = payload->deviceState;
@@ -506,8 +480,10 @@ bool VictronBLE::parseInverter(const uint8_t* data, size_t len, InverterData& re
     result.alarmHighTemperature = (payload->alarms & 0x04) != 0;
     result.alarmOverload = (payload->alarms & 0x08) != 0;
 
-    debugPrint("Inverter: " + String(result.batteryVoltage, 2) + "V, " +
-               String(result.acPower) + "W, State: " + String(result.state));
+    if (debugEnabled) {
+        debugPrint("Inverter: " + String(result.batteryVoltage, 2) + "V, " +
+                   String(result.acPower) + "W, State: " + String(result.state));
+    }
 
     return true;
 }
@@ -515,12 +491,11 @@ bool VictronBLE::parseInverter(const uint8_t* data, size_t len, InverterData& re
 // Parse DC-DC Converter data
 bool VictronBLE::parseDCDCConverter(const uint8_t* data, size_t len, DCDCConverterData& result) {
     if (len < sizeof(victronDCDCConverterPayload)) {
-        debugPrint("DC-DC converter data too short: " + String(len) + " bytes");
+        if (debugEnabled) debugPrint("DC-DC converter data too short: " + String(len) + " bytes");
         return false;
     }
 
-    // Cast decrypted data to struct for easy access
-    const victronDCDCConverterPayload* payload = (const victronDCDCConverterPayload*)data;
+    const auto* payload = reinterpret_cast<const victronDCDCConverterPayload*>(data);
 
     // Parse charge state
     result.chargeState = payload->chargeState;
@@ -537,56 +512,58 @@ bool VictronBLE::parseDCDCConverter(const uint8_t* data, size_t len, DCDCConvert
     // Parse output current (10 mA units -> amps)
     result.outputCurrent = payload->outputCurrent * 0.01f;
 
-    debugPrint("DC-DC Converter: In=" + String(result.inputVoltage, 2) + "V, Out=" +
-               String(result.outputVoltage, 2) + "V, " + String(result.outputCurrent, 2) + "A");
+    if (debugEnabled) {
+        debugPrint("DC-DC Converter: In=" + String(result.inputVoltage, 2) + "V, Out=" +
+                   String(result.outputVoltage, 2) + "V, " + String(result.outputCurrent, 2) + "A");
+    }
 
     return true;
 }
 
 // Get data methods
-bool VictronBLE::getSolarChargerData(String macAddress, SolarChargerData& data) {
+bool VictronBLE::getSolarChargerData(const String& macAddress, SolarChargerData& data) {
     String normalizedMAC = normalizeMAC(macAddress);
     auto it = devices.find(normalizedMAC);
 
     if (it != devices.end() && it->second->data &&
         it->second->data->deviceType == DEVICE_TYPE_SOLAR_CHARGER) {
-        data = *(SolarChargerData*)it->second->data;
+        data = *static_cast<SolarChargerData*>(it->second->data);
         return data.dataValid;
     }
     return false;
 }
 
-bool VictronBLE::getBatteryMonitorData(String macAddress, BatteryMonitorData& data) {
+bool VictronBLE::getBatteryMonitorData(const String& macAddress, BatteryMonitorData& data) {
     String normalizedMAC = normalizeMAC(macAddress);
     auto it = devices.find(normalizedMAC);
 
     if (it != devices.end() && it->second->data &&
         it->second->data->deviceType == DEVICE_TYPE_BATTERY_MONITOR) {
-        data = *(BatteryMonitorData*)it->second->data;
+        data = *static_cast<BatteryMonitorData*>(it->second->data);
         return data.dataValid;
     }
     return false;
 }
 
-bool VictronBLE::getInverterData(String macAddress, InverterData& data) {
+bool VictronBLE::getInverterData(const String& macAddress, InverterData& data) {
     String normalizedMAC = normalizeMAC(macAddress);
     auto it = devices.find(normalizedMAC);
 
     if (it != devices.end() && it->second->data &&
         it->second->data->deviceType == DEVICE_TYPE_INVERTER) {
-        data = *(InverterData*)it->second->data;
+        data = *static_cast<InverterData*>(it->second->data);
         return data.dataValid;
     }
     return false;
 }
 
-bool VictronBLE::getDCDCConverterData(String macAddress, DCDCConverterData& data) {
+bool VictronBLE::getDCDCConverterData(const String& macAddress, DCDCConverterData& data) {
     String normalizedMAC = normalizeMAC(macAddress);
     auto it = devices.find(normalizedMAC);
 
     if (it != devices.end() && it->second->data &&
         it->second->data->deviceType == DEVICE_TYPE_DCDC_CONVERTER) {
-        data = *(DCDCConverterData*)it->second->data;
+        data = *static_cast<DCDCConverterData*>(it->second->data);
         return data.dataValid;
     }
     return false;
@@ -644,21 +621,19 @@ bool VictronBLE::hexStringToBytes(const String& hex, uint8_t* bytes, size_t len)
 
 // Helper: MAC address to string
 String VictronBLE::macAddressToString(BLEAddress address) {
-    // Use the BLEAddress toString() method which provides consistent formatting
     return String(address.toString().c_str());
 }
 
 // Helper: Normalize MAC address format
-String VictronBLE::normalizeMAC(String mac) {
+String VictronBLE::normalizeMAC(const String& mac) {
     String normalized = mac;
     normalized.toLowerCase();
-    // XXX - is this right, was - to : but not consistent location of pairs or not
     normalized.replace("-", "");
     normalized.replace(":", "");
     return normalized;
 }
 
-// Debug helpers
+// Debug helper
 void VictronBLE::debugPrint(const String& message) {
     if (debugEnabled)
         Serial.println("[VictronBLE] " + message);
