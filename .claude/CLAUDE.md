@@ -54,3 +54,51 @@ Arduino/ESP32 library for reading Victron Energy devices via Bluetooth Low Energ
 - examples/MultiDevice/src/main.cpp
 - library.json
 
+
+### Session: 2026-02-12 18:06
+**Commits:**
+```
+5a210fb Experimenting with a claude file and created new logging example
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- TODO
+- examples/Logger/platformio.ini
+- examples/Logger/src/main.cpp
+- examples/MultiDevice/src/main.cpp
+- library.json
+
+
+### Session: 2026-02-12 18:08
+**Commits:**
+```
+5a210fb Experimenting with a claude file and created new logging example
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- README.md
+- TODO
+- VERSIONS
+- examples/Logger/platformio.ini
+- examples/Logger/src/main.cpp
+- examples/MultiDevice/src/main.cpp
+- library.json
+- library.properties
+
+
+### Session: 2026-02-12 18:10
+**Commits:**
+```
+5a210fb Experimenting with a claude file and created new logging example
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- README.md
+- TODO
+- VERSIONS
+- examples/Logger/platformio.ini
+- examples/Logger/src/main.cpp
+- examples/MultiDevice/src/main.cpp
+- library.json
+- library.properties
+

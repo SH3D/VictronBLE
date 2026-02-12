@@ -4,7 +4,7 @@ ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (B
 
 **⚠️ INITIAL RELEASE - LIMITED TESTING DONE**
 
-This is an initial release (v0.2.1) and has been tested with MPPT on an ESP32-S3 and ESP32-C3.
+This is an initial release (v0.3.1) and has been tested with MPPT on an ESP32-S3 and ESP32-C3.
 Use with caution and please report any issues you encounter. Testing and feedback are greatly appreciated!
 
 ---
