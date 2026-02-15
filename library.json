@@ -31,6 +31,11 @@
       "name": "Logger",
       "base": "examples/Logger",
       "files": ["src/main.cpp"]
+    },
+    {
+      "name": "Repeater",
+      "base": "examples/Repeater",
+      "files": ["src/main.cpp"]
     }
   ],
   "export": {

@@ -118,3 +118,47 @@ a843eb9 Keep v0.3.1
 - src/VictronBLE.cpp
 - src/VictronBLE.h
 
+
+### Session: 2026-02-12 18:35
+**Commits:**
+```
+a64fef8 New version with smaller memory footprint etc
+a843eb9 Keep v0.3.1
+5a210fb Experimenting with a claude file and created new logging example
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
+
+### Session: 2026-02-13 11:02
+**Modified files:**
+- .claude/CLAUDE.md
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
+
+### Session: 2026-02-15 18:59
+**Modified files:**
+- .claude/CLAUDE.md
+- library.json
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
+
+### Session: 2026-02-15 19:06
+**Modified files:**
+- .claude/CLAUDE.md
+- library.json
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
+
+### Session: 2026-02-15 19:10
+**Modified files:**
+- .claude/CLAUDE.md
+- library.json
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
