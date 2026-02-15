@@ -12,6 +12,10 @@
 #include <WiFi.h>
 #include <esp_now.h>
 
+#ifdef USE_M5STICK
+#include <M5StickC.h>
+#endif
+
 // ESPNow packet structure - must match Repeater
 struct __attribute__((packed)) SolarChargerPacket {
     uint8_t chargeState;
@@ -26,6 +30,26 @@ struct __attribute__((packed)) SolarChargerPacket {
 };
 
 static uint32_t recvCount = 0;
+
+#ifdef USE_M5STICK
+// Display: cache latest packet per device for screen rotation
+static const int MAX_DISPLAY_DEVICES = 4;
+static SolarChargerPacket displayPackets[MAX_DISPLAY_DEVICES];
+static bool displayValid[MAX_DISPLAY_DEVICES] = {};
+static int displayCount = 0;
+static int displayPage = 0;          // Which device to show
+static bool displayDirty = true;
+static unsigned long lastPageSwitch = 0;
+static const unsigned long PAGE_SWITCH_MS = 5000; // Rotate pages every 5s
+
+static int findOrAddDisplay(const char* name) {
+    for (int i = 0; i < displayCount; i++) {
+        if (strncmp(displayPackets[i].deviceName, name, 16) == 0) return i;
+    }
+    if (displayCount < MAX_DISPLAY_DEVICES) return displayCount++;
+    return -1;
+}
+#endif
 
 static const char* chargeStateName(uint8_t state) {
     switch (state) {
@@ -76,6 +100,15 @@ void onDataRecv(const uint8_t* senderMac, const uint8_t* data, int len) {
                   pkt->rssi,
                   senderMac[0], senderMac[1], senderMac[2],
                   senderMac[3], senderMac[4], senderMac[5]);
+
+#ifdef USE_M5STICK
+    int idx = findOrAddDisplay(name);
+    if (idx >= 0) {
+        displayPackets[idx] = *pkt;
+        displayValid[idx] = true;
+        displayDirty = true;
+    }
+#endif
 }
 
 void setup() {

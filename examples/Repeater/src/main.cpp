@@ -1,9 +1,9 @@
 /**
  * VictronBLE Repeater Example
  *
- * Collects Solar Charger data via BLE and forwards every packet
- * over ESPNow broadcast. Place this ESP32 near Victron devices and
- * use a separate Receiver ESP32 at a distance.
+ * Collects Solar Charger data via BLE and transmits the latest
+ * readings over ESPNow broadcast every 30 seconds. Place this ESP32
+ * near Victron devices and use a separate Receiver ESP32 at a distance.
  *
  * ESPNow range is typically much greater than BLE (~200m+ line of sight).
  *
@@ -34,14 +34,37 @@ struct __attribute__((packed)) SolarChargerPacket {
 // Broadcast address
 static const uint8_t BROADCAST_ADDR[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+static const unsigned long SEND_INTERVAL_MS = 30000; // 30 seconds
+
 static uint32_t sendCount = 0;
 static uint32_t sendFailCount = 0;
+static uint32_t blePacketCount = 0;
+
+// Cache latest packet per device
+static const int MAX_DEVICES = 4;
+static SolarChargerPacket cachedPackets[MAX_DEVICES];
+static bool cachedValid[MAX_DEVICES] = {};
+static int cachedCount = 0;
+static unsigned long lastSendTime = 0;
 
 VictronBLE victron;
+
+// Find cached slot by device name, or allocate a new one
+static int findOrAddCached(const char* name) {
+    for (int i = 0; i < cachedCount; i++) {
+        if (strncmp(cachedPackets[i].deviceName, name, sizeof(cachedPackets[i].deviceName)) == 0)
+            return i;
+    }
+    if (cachedCount < MAX_DEVICES) return cachedCount++;
+    return -1;
+}
 
 class RepeaterCallback : public VictronDeviceCallback {
 public:
     void onSolarChargerData(const SolarChargerData& data) override {
+        blePacketCount++;
+
+        // Build packet
         SolarChargerPacket pkt;
         pkt.chargeState = static_cast<uint8_t>(data.chargeState);
         pkt.batteryVoltage = data.batteryVoltage;
@@ -51,25 +74,14 @@ public:
         pkt.yieldToday = data.yieldToday;
         pkt.loadCurrent = data.loadCurrent;
         pkt.rssi = data.rssi;
-
-        // Copy device name, truncate to fit
         memset(pkt.deviceName, 0, sizeof(pkt.deviceName));
         strncpy(pkt.deviceName, data.deviceName.c_str(), sizeof(pkt.deviceName) - 1);
 
-        esp_err_t result = esp_now_send(BROADCAST_ADDR,
-                                        reinterpret_cast<const uint8_t*>(&pkt),
-                                        sizeof(pkt));
-
-        sendCount++;
-        if (result != ESP_OK) {
-            sendFailCount++;
-            Serial.println("ESPNow send failed: " + String(esp_err_to_name(result)));
-        } else {
-            Serial.println("[TX] " + String(pkt.deviceName) +
-                           " Batt:" + String(pkt.batteryVoltage, 2) + "V" +
-                           " PV:" + String(pkt.panelPower, 0) + "W" +
-                           " (sent:" + String(sendCount) +
-                           " fail:" + String(sendFailCount) + ")");
+        // Cache it
+        int idx = findOrAddCached(pkt.deviceName);
+        if (idx >= 0) {
+            cachedPackets[idx] = pkt;
+            cachedValid[idx] = true;
         }
     }
 };
@@ -138,5 +150,40 @@ void setup() {
 
 void loop() {
     victron.loop();
+
+    // Send cached packets every 30 seconds
+    unsigned long now = millis();
+    if (now - lastSendTime >= SEND_INTERVAL_MS) {
+        lastSendTime = now;
+
+        int sent = 0;
+        for (int i = 0; i < cachedCount; i++) {
+            if (!cachedValid[i]) continue;
+
+            esp_err_t result = esp_now_send(BROADCAST_ADDR,
+                reinterpret_cast<const uint8_t*>(&cachedPackets[i]),
+                sizeof(SolarChargerPacket));
+
+            if (result == ESP_OK) {
+                sendCount++;
+                sent++;
+                Serial.printf("[ESPNow] Sent %s: %.2fV %.1fA PV:%.1fV %.0fW State:%d\n",
+                    cachedPackets[i].deviceName,
+                    cachedPackets[i].batteryVoltage,
+                    cachedPackets[i].batteryCurrent,
+                    cachedPackets[i].panelVoltage,
+                    cachedPackets[i].panelPower,
+                    cachedPackets[i].chargeState);
+            } else {
+                sendFailCount++;
+                Serial.printf("[ESPNow] FAIL sending %s (err=%d)\n",
+                    cachedPackets[i].deviceName, result);
+            }
+        }
+
+        Serial.printf("[Stats] BLE pkts:%lu  ESPNow sent:%lu fail:%lu  devices:%d\n",
+            blePacketCount, sendCount, sendFailCount, cachedCount);
+    }
+
     delay(100);
 }

@@ -162,3 +162,19 @@ a843eb9 Keep v0.3.1
 - src/VictronBLE.cpp
 - src/VictronBLE.h
 
+
+### Session: 2026-02-15 19:18
+**Commits:**
+```
+8a2402c Repeater and Test code for ESP Now
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- examples/FakeRepeater/platformio.ini
+- examples/FakeRepeater/src/main.cpp
+- examples/Receiver/platformio.ini
+- examples/Receiver/src/main.cpp
+- examples/Repeater/platformio.ini
+- examples/Repeater/src/main.cpp
+- library.json
+
