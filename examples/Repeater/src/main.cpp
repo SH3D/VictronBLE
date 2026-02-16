@@ -34,7 +34,7 @@ struct __attribute__((packed)) SolarChargerPacket {
 // Broadcast address
 static const uint8_t BROADCAST_ADDR[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-static const unsigned long SEND_INTERVAL_MS = 30000; // 30 seconds
+static const unsigned long SEND_INTERVAL_MS = 5000; // 30 seconds
 
 static uint32_t sendCount = 0;
 static uint32_t sendFailCount = 0;

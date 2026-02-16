@@ -178,3 +178,16 @@ a843eb9 Keep v0.3.1
 - examples/Repeater/src/main.cpp
 - library.json
 
+
+### Session: 2026-02-15 19:20
+**Commits:**
+```
+24712c2 Work on receiver and sender
+8a2402c Repeater and Test code for ESP Now
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- examples/Receiver/platformio.ini
+- examples/Receiver/src/main.cpp
+- examples/Repeater/src/main.cpp
+

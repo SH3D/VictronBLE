@@ -112,6 +112,17 @@ void onDataRecv(const uint8_t* senderMac, const uint8_t* data, int len) {
 }
 
 void setup() {
+#ifdef USE_M5STICK
+    M5.begin();
+    M5.Lcd.setRotation(3);  // Landscape, USB on right
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setTextColor(WHITE, BLACK);
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setCursor(0, 0);
+    M5.Lcd.println("ESPNow Receiver");
+    M5.Lcd.println("Waiting...");
+#endif
+
     Serial.begin(115200);
     delay(1000);
 
@@ -136,5 +147,75 @@ void setup() {
 }
 
 void loop() {
+#ifdef USE_M5STICK
+    M5.update();
+
+    // Button A (front): manually cycle to next device
+    if (M5.BtnA.wasPressed()) {
+        if (displayCount > 0) {
+            displayPage = (displayPage + 1) % displayCount;
+            displayDirty = true;
+            lastPageSwitch = millis();
+        }
+    }
+
+    // Auto-rotate pages every 5 seconds if multiple devices
+    if (displayCount > 1) {
+        unsigned long now = millis();
+        if (now - lastPageSwitch >= PAGE_SWITCH_MS) {
+            lastPageSwitch = now;
+            displayPage = (displayPage + 1) % displayCount;
+            displayDirty = true;
+        }
+    }
+
+    // Redraw screen when data changes or page switches
+    if (displayDirty && displayCount > 0) {
+        displayDirty = false;
+
+        int p = displayPage % displayCount;
+        if (!displayValid[p]) { delay(100); return; }
+
+        const auto& pkt = displayPackets[p];
+
+        M5.Lcd.fillScreen(BLACK);
+        M5.Lcd.setCursor(0, 0);
+
+        // Row 0: device name + page indicator
+        M5.Lcd.setTextColor(CYAN, BLACK);
+        M5.Lcd.printf("%s", pkt.deviceName);
+        if (displayCount > 1) {
+            M5.Lcd.printf(" [%d/%d]", p + 1, displayCount);
+        }
+        M5.Lcd.println();
+
+        // Row 1: charge state
+        M5.Lcd.setTextColor(YELLOW, BLACK);
+        M5.Lcd.printf("State: %s\n", chargeStateName(pkt.chargeState));
+
+        // Row 2: battery voltage + current (large-ish)
+        M5.Lcd.setTextColor(GREEN, BLACK);
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.printf("%.2fV\n", pkt.batteryVoltage);
+        M5.Lcd.setTextSize(1);
+        M5.Lcd.setTextColor(WHITE, BLACK);
+        M5.Lcd.printf("Batt: %.2fA\n", pkt.batteryCurrent);
+
+        // Row 3: PV
+        M5.Lcd.printf("PV: %.1fV  %.0fW\n", pkt.panelVoltage, pkt.panelPower);
+
+        // Row 4: yield + load
+        M5.Lcd.printf("Yield: %uWh", pkt.yieldToday);
+        if (pkt.loadCurrent > 0) {
+            M5.Lcd.printf("  Ld:%.1fA", pkt.loadCurrent);
+        }
+        M5.Lcd.println();
+
+        // Row 5: stats
+        M5.Lcd.setTextColor(DARKGREY, BLACK);
+        M5.Lcd.printf("RSSI:%d  RX:%lu", pkt.rssi, recvCount);
+    }
+#endif
+
     delay(100);
 }
