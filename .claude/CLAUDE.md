@@ -252,3 +252,18 @@ a843eb9 Keep v0.3.1
 - src/VictronBLE.cpp
 - src/VictronBLE.h
 
+
+### Session: 2026-02-28 14:40
+**Commits:**
+```
+39a89c8 Versions v0.4 ready for release
+4944757 Fix to be non blocking without tasks
+31765c7 Update notes
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- README.md
+- VERSIONS
+- library.json
+- library.properties
+
