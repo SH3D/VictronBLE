@@ -1,154 +1,129 @@
 /**
- * VictronBLE Example
+ * VictronBLE Multi-Device Example
  *
- * This example demonstrates how to use the VictronBLE library to read data
- * from multiple Victron devices simultaneously.
- *
- * Hardware Requirements:
- * - ESP32 board
- * - Victron devices with BLE (SmartSolar, SmartShunt, etc.)
+ * Demonstrates reading data from multiple Victron device types via BLE.
  *
  * Setup:
- * 1. Get your device encryption keys from the VictronConnect app:
- *    - Open VictronConnect
- *    - Connect to your device
- *    - Go to Settings > Product Info
- *    - Enable "Instant readout via Bluetooth"
- *    - Click "Show" next to "Instant readout details"
- *    - Copy the encryption key (32 hex characters)
- *
- * 2. Update the device configurations below with your devices' MAC addresses
- *    and encryption keys
+ * 1. Get your device encryption keys from VictronConnect app
+ *    (Settings > Product Info > Instant readout via Bluetooth > Show)
+ * 2. Update the device configurations below with your MAC and key
  */
 
 #include <Arduino.h>
 #include "VictronBLE.h"
 
-// Create VictronBLE instance
 VictronBLE victron;
 
-// Device callback class - gets called when new data arrives
-class MyVictronCallback : public VictronDeviceCallback {
-public:
-    uint32_t solarChargerCount = 0;
-    uint32_t batteryMonitorCount = 0;
-    uint32_t inverterCount = 0;
-    uint32_t dcdcConverterCount = 0;
+static uint32_t solarChargerCount = 0;
+static uint32_t batteryMonitorCount = 0;
+static uint32_t inverterCount = 0;
+static uint32_t dcdcConverterCount = 0;
 
-    void onSolarChargerData(const SolarChargerData& data) override {
-        solarChargerCount++;
-        Serial.println("\n=== Solar Charger: " + data.deviceName + " (#" + String(solarChargerCount) + ") ===");
-        Serial.println("MAC: " + data.macAddress);
-        Serial.println("RSSI: " + String(data.rssi) + " dBm");
-        Serial.println("State: " + getChargeStateName(data.chargeState));
-        Serial.println("Battery: " + String(data.batteryVoltage, 2) + " V");
-        Serial.println("Current: " + String(data.batteryCurrent, 2) + " A");
-        Serial.println("Panel Voltage: " + String(data.panelVoltage, 1) + " V");
-        Serial.println("Panel Power: " + String(data.panelPower) + " W");
-        Serial.println("Yield Today: " + String(data.yieldToday) + " Wh");
-        if (data.loadCurrent > 0) {
-            Serial.println("Load Current: " + String(data.loadCurrent, 2) + " A");
-        }
-        Serial.println("Last Update: " + String((millis() - data.lastUpdate) / 1000) + "s ago");
+static const char* chargeStateName(uint8_t state) {
+    switch (state) {
+        case CHARGER_OFF:              return "Off";
+        case CHARGER_LOW_POWER:        return "Low Power";
+        case CHARGER_FAULT:            return "Fault";
+        case CHARGER_BULK:             return "Bulk";
+        case CHARGER_ABSORPTION:       return "Absorption";
+        case CHARGER_FLOAT:            return "Float";
+        case CHARGER_STORAGE:          return "Storage";
+        case CHARGER_EQUALIZE:         return "Equalize";
+        case CHARGER_INVERTING:        return "Inverting";
+        case CHARGER_POWER_SUPPLY:     return "Power Supply";
+        case CHARGER_EXTERNAL_CONTROL: return "External Control";
+        default:                       return "Unknown";
     }
+}
 
-    void onBatteryMonitorData(const BatteryMonitorData& data) override {
-        batteryMonitorCount++;
-        Serial.println("\n=== Battery Monitor: " + data.deviceName + " (#" + String(batteryMonitorCount) + ") ===");
-        Serial.println("MAC: " + data.macAddress);
-        Serial.println("RSSI: " + String(data.rssi) + " dBm");
-        Serial.println("Voltage: " + String(data.voltage, 2) + " V");
-        Serial.println("Current: " + String(data.current, 2) + " A");
-        Serial.println("SOC: " + String(data.soc, 1) + " %");
-        Serial.println("Consumed: " + String(data.consumedAh, 2) + " Ah");
-
-        if (data.remainingMinutes < 65535) {
-            int hours = data.remainingMinutes / 60;
-            int mins = data.remainingMinutes % 60;
-            Serial.println("Time Remaining: " + String(hours) + "h " + String(mins) + "m");
+void onVictronData(const VictronDevice* dev) {
+    switch (dev->deviceType) {
+        case DEVICE_TYPE_SOLAR_CHARGER: {
+            const auto& s = dev->solar;
+            solarChargerCount++;
+            Serial.printf("\n=== Solar Charger: %s (#%lu) ===\n", dev->name, solarChargerCount);
+            Serial.printf("MAC: %s\n", dev->mac);
+            Serial.printf("RSSI: %d dBm\n", dev->rssi);
+            Serial.printf("State: %s\n", chargeStateName(s.chargeState));
+            Serial.printf("Battery: %.2f V\n", s.batteryVoltage);
+            Serial.printf("Current: %.2f A\n", s.batteryCurrent);
+            Serial.printf("Panel Power: %.0f W\n", s.panelPower);
+            Serial.printf("Yield Today: %u Wh\n", s.yieldToday);
+            if (s.loadCurrent > 0)
+                Serial.printf("Load Current: %.2f A\n", s.loadCurrent);
+            Serial.printf("Last Update: %lus ago\n", (millis() - dev->lastUpdate) / 1000);
+            break;
         }
-
-        if (data.temperature > 0) {
-            Serial.println("Temperature: " + String(data.temperature, 1) + " °C");
+        case DEVICE_TYPE_BATTERY_MONITOR: {
+            const auto& b = dev->battery;
+            batteryMonitorCount++;
+            Serial.printf("\n=== Battery Monitor: %s (#%lu) ===\n", dev->name, batteryMonitorCount);
+            Serial.printf("MAC: %s\n", dev->mac);
+            Serial.printf("RSSI: %d dBm\n", dev->rssi);
+            Serial.printf("Voltage: %.2f V\n", b.voltage);
+            Serial.printf("Current: %.2f A\n", b.current);
+            Serial.printf("SOC: %.1f %%\n", b.soc);
+            Serial.printf("Consumed: %.2f Ah\n", b.consumedAh);
+            if (b.remainingMinutes < 65535)
+                Serial.printf("Time Remaining: %dh %dm\n", b.remainingMinutes / 60, b.remainingMinutes % 60);
+            if (b.temperature > 0)
+                Serial.printf("Temperature: %.1f C\n", b.temperature);
+            if (b.auxVoltage > 0)
+                Serial.printf("Aux Voltage: %.2f V\n", b.auxVoltage);
+            if (b.alarmLowVoltage || b.alarmHighVoltage || b.alarmLowSOC ||
+                b.alarmLowTemperature || b.alarmHighTemperature) {
+                Serial.print("ALARMS:");
+                if (b.alarmLowVoltage) Serial.print(" LOW-V");
+                if (b.alarmHighVoltage) Serial.print(" HIGH-V");
+                if (b.alarmLowSOC) Serial.print(" LOW-SOC");
+                if (b.alarmLowTemperature) Serial.print(" LOW-TEMP");
+                if (b.alarmHighTemperature) Serial.print(" HIGH-TEMP");
+                Serial.println();
+            }
+            Serial.printf("Last Update: %lus ago\n", (millis() - dev->lastUpdate) / 1000);
+            break;
         }
-        if (data.auxVoltage > 0) {
-            Serial.println("Aux Voltage: " + String(data.auxVoltage, 2) + " V");
+        case DEVICE_TYPE_INVERTER: {
+            const auto& inv = dev->inverter;
+            inverterCount++;
+            Serial.printf("\n=== Inverter/Charger: %s (#%lu) ===\n", dev->name, inverterCount);
+            Serial.printf("MAC: %s\n", dev->mac);
+            Serial.printf("RSSI: %d dBm\n", dev->rssi);
+            Serial.printf("Battery: %.2f V\n", inv.batteryVoltage);
+            Serial.printf("Current: %.2f A\n", inv.batteryCurrent);
+            Serial.printf("AC Power: %.0f W\n", inv.acPower);
+            Serial.printf("State: %d\n", inv.state);
+            if (inv.alarmLowVoltage || inv.alarmHighVoltage ||
+                inv.alarmHighTemperature || inv.alarmOverload) {
+                Serial.print("ALARMS:");
+                if (inv.alarmLowVoltage) Serial.print(" LOW-V");
+                if (inv.alarmHighVoltage) Serial.print(" HIGH-V");
+                if (inv.alarmHighTemperature) Serial.print(" TEMP");
+                if (inv.alarmOverload) Serial.print(" OVERLOAD");
+                Serial.println();
+            }
+            Serial.printf("Last Update: %lus ago\n", (millis() - dev->lastUpdate) / 1000);
+            break;
         }
-
-        // Print alarms
-        if (data.alarmLowVoltage || data.alarmHighVoltage || data.alarmLowSOC ||
-            data.alarmLowTemperature || data.alarmHighTemperature) {
-            Serial.print("ALARMS: ");
-            if (data.alarmLowVoltage) Serial.print("LOW-V ");
-            if (data.alarmHighVoltage) Serial.print("HIGH-V ");
-            if (data.alarmLowSOC) Serial.print("LOW-SOC ");
-            if (data.alarmLowTemperature) Serial.print("LOW-TEMP ");
-            if (data.alarmHighTemperature) Serial.print("HIGH-TEMP ");
-            Serial.println();
+        case DEVICE_TYPE_DCDC_CONVERTER: {
+            const auto& dc = dev->dcdc;
+            dcdcConverterCount++;
+            Serial.printf("\n=== DC-DC Converter: %s (#%lu) ===\n", dev->name, dcdcConverterCount);
+            Serial.printf("MAC: %s\n", dev->mac);
+            Serial.printf("RSSI: %d dBm\n", dev->rssi);
+            Serial.printf("Input: %.2f V\n", dc.inputVoltage);
+            Serial.printf("Output: %.2f V\n", dc.outputVoltage);
+            Serial.printf("Current: %.2f A\n", dc.outputCurrent);
+            Serial.printf("State: %d\n", dc.chargeState);
+            if (dc.errorCode != 0)
+                Serial.printf("Error Code: %d\n", dc.errorCode);
+            Serial.printf("Last Update: %lus ago\n", (millis() - dev->lastUpdate) / 1000);
+            break;
         }
-
-        Serial.println("Last Update: " + String((millis() - data.lastUpdate) / 1000) + "s ago");
+        default:
+            break;
     }
-
-    void onInverterData(const InverterData& data) override {
-        inverterCount++;
-        Serial.println("\n=== Inverter/Charger: " + data.deviceName + " (#" + String(inverterCount) + ") ===");
-        Serial.println("MAC: " + data.macAddress);
-        Serial.println("RSSI: " + String(data.rssi) + " dBm");
-        Serial.println("Battery: " + String(data.batteryVoltage, 2) + " V");
-        Serial.println("Current: " + String(data.batteryCurrent, 2) + " A");
-        Serial.println("AC Power: " + String(data.acPower) + " W");
-        Serial.println("State: " + String(data.state));
-
-        // Print alarms
-        if (data.alarmLowVoltage || data.alarmHighVoltage ||
-            data.alarmHighTemperature || data.alarmOverload) {
-            Serial.print("ALARMS: ");
-            if (data.alarmLowVoltage) Serial.print("LOW-V ");
-            if (data.alarmHighVoltage) Serial.print("HIGH-V ");
-            if (data.alarmHighTemperature) Serial.print("TEMP ");
-            if (data.alarmOverload) Serial.print("OVERLOAD ");
-            Serial.println();
-        }
-
-        Serial.println("Last Update: " + String((millis() - data.lastUpdate) / 1000) + "s ago");
-    }
-
-    void onDCDCConverterData(const DCDCConverterData& data) override {
-        dcdcConverterCount++;
-        Serial.println("\n=== DC-DC Converter: " + data.deviceName + " (#" + String(dcdcConverterCount) + ") ===");
-        Serial.println("MAC: " + data.macAddress);
-        Serial.println("RSSI: " + String(data.rssi) + " dBm");
-        Serial.println("Input: " + String(data.inputVoltage, 2) + " V");
-        Serial.println("Output: " + String(data.outputVoltage, 2) + " V");
-        Serial.println("Current: " + String(data.outputCurrent, 2) + " A");
-        Serial.println("State: " + String(data.chargeState));
-        if (data.errorCode != 0) {
-            Serial.println("Error Code: " + String(data.errorCode));
-        }
-        Serial.println("Last Update: " + String((millis() - data.lastUpdate) / 1000) + "s ago");
-    }
-
-private:
-    String getChargeStateName(SolarChargerState state) {
-        switch (state) {
-            case CHARGER_OFF: return "Off";
-            case CHARGER_LOW_POWER: return "Low Power";
-            case CHARGER_FAULT: return "Fault";
-            case CHARGER_BULK: return "Bulk";
-            case CHARGER_ABSORPTION: return "Absorption";
-            case CHARGER_FLOAT: return "Float";
-            case CHARGER_STORAGE: return "Storage";
-            case CHARGER_EQUALIZE: return "Equalize";
-            case CHARGER_INVERTING: return "Inverting";
-            case CHARGER_POWER_SUPPLY: return "Power Supply";
-            case CHARGER_EXTERNAL_CONTROL: return "External Control";
-            default: return "Unknown";
-        }
-    }
-};
-
-MyVictronCallback callback;
+}
 
 void setup() {
     Serial.begin(115200);
@@ -158,102 +133,33 @@ void setup() {
     Serial.println("VictronBLE Multi-Device Example");
     Serial.println("=================================\n");
 
-    // Initialize VictronBLE with 5 second scan duration
     if (!victron.begin(5)) {
         Serial.println("ERROR: Failed to initialize VictronBLE!");
-        Serial.println(victron.getLastError());
         while (1) delay(1000);
     }
 
-    // Enable debug output (optional)
     victron.setDebug(false);
-
-    // Set callback for data updates
-    victron.setCallback(&callback);
-
-    // Add your devices here
-    // Replace with your actual MAC addresses and encryption keys
-
-    // CORRECT in Alternative
-    // Rainbow48V at MAC e4:05:42:34:14:f3
-
-    // Temporary - Scott Example
-    victron.addDevice(
-        "Rainbow48V",                              // Device name
-        "E4:05:42:34:14:F3",                        // MAC address
-        "0ec3adf7433dd61793ff2f3b8ad32ed8",         // Encryption key (32 hex chars)
-        DEVICE_TYPE_SOLAR_CHARGER                    // Device type
-    );
+    victron.setCallback(onVictronData);
 
     victron.addDevice(
-        "ScottTrailer",                              // Device name
-        "e64559783cfb",
-        "3fa658aded4f309b9bc17a2318cb1f56",
-        DEVICE_TYPE_SOLAR_CHARGER                    // Device type
-    );
-
-    // Example: Solar Charger #1
-    /*
-    victron.addDevice(
-        "MPPT 100/30",                              // Device name
-        "E7:48:D4:28:B7:9C",                        // MAC address
-        "0df4d0395b7d1a876c0c33ecb9e70dcd",         // Encryption key (32 hex chars)
-        DEVICE_TYPE_SOLAR_CHARGER                    // Device type
-    );
-    */
-
-    // Example: Solar Charger #2
-    /*
-    victron.addDevice(
-        "MPPT 75/15",
-        "AA:BB:CC:DD:EE:FF",
-        "1234567890abcdef1234567890abcdef",
+        "Rainbow48V",
+        "E4:05:42:34:14:F3",
+        "0ec3adf7433dd61793ff2f3b8ad32ed8",
         DEVICE_TYPE_SOLAR_CHARGER
     );
-    */
 
-    // Example: Battery Monitor (SmartShunt)
-    /*
     victron.addDevice(
-        "SmartShunt",
-        "11:22:33:44:55:66",
-        "fedcba0987654321fedcba0987654321",
-        DEVICE_TYPE_BATTERY_MONITOR
+        "ScottTrailer",
+        "e64559783cfb",
+        "3fa658aded4f309b9bc17a2318cb1f56",
+        DEVICE_TYPE_SOLAR_CHARGER
     );
-    */
 
-    // Example: Inverter/Charger
-    /*
-    victron.addDevice(
-        "MultiPlus",
-        "99:88:77:66:55:44",
-        "abcdefabcdefabcdefabcdefabcdefab",
-        DEVICE_TYPE_INVERTER
-    );
-    */
-
-    Serial.println("Configured " + String(victron.getDeviceCount()) + " devices");
+    Serial.printf("Configured %d devices\n", (int)victron.getDeviceCount());
     Serial.println("\nStarting BLE scan...\n");
 }
 
 void loop() {
-    // Process BLE scanning and data updates
     victron.loop();
-
-    // Optional: You can also manually query device data
-    // This is useful if you're not using callbacks
-    /*
-    SolarChargerData solarData;
-    if (victron.getSolarChargerData("E7:48:D4:28:B7:9C", solarData)) {
-        // Do something with solarData
-    }
-
-    BatteryMonitorData batteryData;
-    if (victron.getBatteryMonitorData("11:22:33:44:55:66", batteryData)) {
-        // Do something with batteryData
-    }
-    */
-
-    // Add a small delay to avoid overwhelming the serial output
     delay(100);
 }

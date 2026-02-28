@@ -21,7 +21,6 @@ struct __attribute__((packed)) SolarChargerPacket {
     uint8_t chargeState;
     float batteryVoltage;     // V
     float batteryCurrent;     // A
-    float panelVoltage;       // V
     float panelPower;         // W
     uint16_t yieldToday;      // Wh
     float loadCurrent;        // A
@@ -82,13 +81,12 @@ void onDataRecv(const uint8_t* senderMac, const uint8_t* data, int len) {
     memcpy(name, pkt->deviceName, 16);
     name[16] = '\0';
 
-    Serial.printf("[RX #%lu] %s | State:%s Batt:%.2fV %.2fA PV:%.1fV %.0fW Yield:%uWh",
+    Serial.printf("[RX #%lu] %s | State:%s Batt:%.2fV %.2fA PV:%.0fW Yield:%uWh",
                   recvCount,
                   name,
                   chargeStateName(pkt->chargeState),
                   pkt->batteryVoltage,
                   pkt->batteryCurrent,
-                  pkt->panelVoltage,
                   pkt->panelPower,
                   pkt->yieldToday);
 
@@ -202,7 +200,7 @@ void loop() {
         M5.Lcd.printf("Batt: %.2fA\n", pkt.batteryCurrent);
 
         // Row 3: PV
-        M5.Lcd.printf("PV: %.1fV  %.0fW\n", pkt.panelVoltage, pkt.panelPower);
+        M5.Lcd.printf("PV: %.0fW\n", pkt.panelPower);
 
         // Row 4: yield + load
         M5.Lcd.printf("Yield: %uWh", pkt.yieldToday);

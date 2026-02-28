@@ -2,7 +2,7 @@
  * VictronBLE Repeater Example
  *
  * Collects Solar Charger data via BLE and transmits the latest
- * readings over ESPNow broadcast every 30 seconds. Place this ESP32
+ * readings over ESPNow broadcast every 5 seconds. Place this ESP32
  * near Victron devices and use a separate Receiver ESP32 at a distance.
  *
  * ESPNow range is typically much greater than BLE (~200m+ line of sight).
@@ -23,7 +23,6 @@ struct __attribute__((packed)) SolarChargerPacket {
     uint8_t chargeState;
     float batteryVoltage;     // V
     float batteryCurrent;     // A
-    float panelVoltage;       // V
     float panelPower;         // W
     uint16_t yieldToday;      // Wh
     float loadCurrent;        // A
@@ -31,10 +30,8 @@ struct __attribute__((packed)) SolarChargerPacket {
     char deviceName[16];      // Null-terminated, truncated
 };
 
-// Broadcast address
 static const uint8_t BROADCAST_ADDR[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-static const unsigned long SEND_INTERVAL_MS = 5000; // 30 seconds
+static const unsigned long SEND_INTERVAL_MS = 5000;
 
 static uint32_t sendCount = 0;
 static uint32_t sendFailCount = 0;
@@ -49,7 +46,6 @@ static unsigned long lastSendTime = 0;
 
 VictronBLE victron;
 
-// Find cached slot by device name, or allocate a new one
 static int findOrAddCached(const char* name) {
     for (int i = 0; i < cachedCount; i++) {
         if (strncmp(cachedPackets[i].deviceName, name, sizeof(cachedPackets[i].deviceName)) == 0)
@@ -59,34 +55,28 @@ static int findOrAddCached(const char* name) {
     return -1;
 }
 
-class RepeaterCallback : public VictronDeviceCallback {
-public:
-    void onSolarChargerData(const SolarChargerData& data) override {
-        blePacketCount++;
+void onVictronData(const VictronDevice* dev) {
+    if (dev->deviceType != DEVICE_TYPE_SOLAR_CHARGER) return;
+    blePacketCount++;
+    const auto& s = dev->solar;
 
-        // Build packet
-        SolarChargerPacket pkt;
-        pkt.chargeState = static_cast<uint8_t>(data.chargeState);
-        pkt.batteryVoltage = data.batteryVoltage;
-        pkt.batteryCurrent = data.batteryCurrent;
-        pkt.panelVoltage = data.panelVoltage;
-        pkt.panelPower = data.panelPower;
-        pkt.yieldToday = data.yieldToday;
-        pkt.loadCurrent = data.loadCurrent;
-        pkt.rssi = data.rssi;
-        memset(pkt.deviceName, 0, sizeof(pkt.deviceName));
-        strncpy(pkt.deviceName, data.deviceName.c_str(), sizeof(pkt.deviceName) - 1);
+    SolarChargerPacket pkt;
+    pkt.chargeState = s.chargeState;
+    pkt.batteryVoltage = s.batteryVoltage;
+    pkt.batteryCurrent = s.batteryCurrent;
+    pkt.panelPower = s.panelPower;
+    pkt.yieldToday = s.yieldToday;
+    pkt.loadCurrent = s.loadCurrent;
+    pkt.rssi = dev->rssi;
+    memset(pkt.deviceName, 0, sizeof(pkt.deviceName));
+    strncpy(pkt.deviceName, dev->name, sizeof(pkt.deviceName) - 1);
 
-        // Cache it
-        int idx = findOrAddCached(pkt.deviceName);
-        if (idx >= 0) {
-            cachedPackets[idx] = pkt;
-            cachedValid[idx] = true;
-        }
+    int idx = findOrAddCached(pkt.deviceName);
+    if (idx >= 0) {
+        cachedPackets[idx] = pkt;
+        cachedValid[idx] = true;
     }
-};
-
-RepeaterCallback callback;
+}
 
 void setup() {
     Serial.begin(115200);
@@ -98,7 +88,8 @@ void setup() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
 
-    Serial.println("MAC: " + WiFi.macAddress());
+    Serial.print("MAC: ");
+    Serial.println(WiFi.macAddress());
 
     // Init ESPNow
     if (esp_now_init() != ESP_OK) {
@@ -106,10 +97,9 @@ void setup() {
         while (1) delay(1000);
     }
 
-    // Add broadcast peer
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, BROADCAST_ADDR, 6);
-    peerInfo.channel = 0; // Use current channel
+    peerInfo.channel = 0;
     peerInfo.encrypt = false;
 
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
@@ -122,14 +112,12 @@ void setup() {
     // Init VictronBLE
     if (!victron.begin(5)) {
         Serial.println("ERROR: Failed to initialize VictronBLE!");
-        Serial.println(victron.getLastError());
         while (1) delay(1000);
     }
 
     victron.setDebug(false);
-    victron.setCallback(&callback);
+    victron.setCallback(onVictronData);
 
-    // Add your devices here
     victron.addDevice(
         "Rainbow48V",
         "E4:05:42:34:14:F3",
@@ -144,14 +132,13 @@ void setup() {
         DEVICE_TYPE_SOLAR_CHARGER
     );
 
-    Serial.println("Configured " + String(victron.getDeviceCount()) + " BLE devices");
-    Serial.println("Packet size: " + String(sizeof(SolarChargerPacket)) + " bytes\n");
+    Serial.printf("Configured %d BLE devices\n", (int)victron.getDeviceCount());
+    Serial.printf("Packet size: %d bytes\n\n", (int)sizeof(SolarChargerPacket));
 }
 
 void loop() {
     victron.loop();
 
-    // Send cached packets every 30 seconds
     unsigned long now = millis();
     if (now - lastSendTime >= SEND_INTERVAL_MS) {
         lastSendTime = now;
@@ -167,11 +154,10 @@ void loop() {
             if (result == ESP_OK) {
                 sendCount++;
                 sent++;
-                Serial.printf("[ESPNow] Sent %s: %.2fV %.1fA PV:%.1fV %.0fW State:%d\n",
+                Serial.printf("[ESPNow] Sent %s: %.2fV %.1fA %.0fW State:%d\n",
                     cachedPackets[i].deviceName,
                     cachedPackets[i].batteryVoltage,
                     cachedPackets[i].batteryCurrent,
-                    cachedPackets[i].panelVoltage,
                     cachedPackets[i].panelPower,
                     cachedPackets[i].chargeState);
             } else {

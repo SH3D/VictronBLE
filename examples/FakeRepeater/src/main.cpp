@@ -17,7 +17,6 @@ struct __attribute__((packed)) SolarChargerPacket {
     uint8_t chargeState;
     float batteryVoltage;     // V
     float batteryCurrent;     // A
-    float panelVoltage;       // V
     float panelPower;         // W
     uint16_t yieldToday;      // Wh
     float loadCurrent;        // A
@@ -74,7 +73,6 @@ void loop() {
     pkt.chargeState = (sendCount % 4) + 3; // Cycle through Bulk(3), Absorption(4), Float(5), Storage(6)
     pkt.batteryVoltage = 51.0f + (sendCount % 20) * 0.15f;
     pkt.batteryCurrent = 2.0f + (sendCount % 10) * 0.5f;
-    pkt.panelVoltage = 65.0f + (sendCount % 15) * 0.8f;
     pkt.panelPower = pkt.batteryCurrent * pkt.batteryVoltage;
     pkt.yieldToday = 100 + sendCount * 10;
     pkt.loadCurrent = 0;

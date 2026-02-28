@@ -15,14 +15,16 @@
 #include <BLEDevice.h>
 #include <BLEAdvertisedDevice.h>
 #include <BLEScan.h>
-#include <map>
-#include <vector>
 #include "mbedtls/aes.h"
 
-// Victron manufacturer ID
+// --- Constants ---
 static constexpr uint16_t VICTRON_MANUFACTURER_ID = 0x02E1;
+static constexpr int VICTRON_MAX_DEVICES = 8;
+static constexpr int VICTRON_MAC_LEN = 13;     // 12 hex chars + null
+static constexpr int VICTRON_NAME_LEN = 32;
+static constexpr int VICTRON_ENCRYPTED_LEN = 21;
 
-// Device type IDs from Victron protocol
+// --- Device type IDs from Victron protocol ---
 enum VictronDeviceType {
     DEVICE_TYPE_UNKNOWN = 0x00,
     DEVICE_TYPE_SOLAR_CHARGER = 0x01,
@@ -38,7 +40,7 @@ enum VictronDeviceType {
     DEVICE_TYPE_DC_ENERGY_METER = 0x0B
 };
 
-// Device state for Solar Charger
+// --- Device state for Solar Charger ---
 enum SolarChargerState {
     CHARGER_OFF = 0,
     CHARGER_LOW_POWER = 1,
@@ -53,163 +55,216 @@ enum SolarChargerState {
     CHARGER_EXTERNAL_CONTROL = 252
 };
 
-// Binary data structures for decoding BLE advertisements
-// Must use __attribute__((packed)) to prevent compiler padding
+// ============================================================
+// Wire-format packed structures for decoding BLE advertisements
+// ============================================================
 
-// Manufacturer data structure (outer envelope)
 struct victronManufacturerData {
-  uint16_t vendorID;                 // vendor ID
-  uint8_t beaconType;                // Should be 0x10 (Product Advertisement) for the packets we want
-  uint8_t unknownData1[3];           // Unknown data
-  uint8_t victronRecordType;         // Should be 0x01 (Solar Charger) for the packets we want
-  uint16_t nonceDataCounter;         // Nonce
-  uint8_t encryptKeyMatch;           // Should match pre-shared encryption key byte 0
-  uint8_t victronEncryptedData[21];  // (31 bytes max per BLE spec - size of previous elements)
-  uint8_t nullPad;                   // extra byte because toCharArray() adds a \0 byte.
+    uint16_t vendorID;
+    uint8_t beaconType;                // 0x10 = Product Advertisement
+    uint8_t unknownData1[3];
+    uint8_t victronRecordType;         // Device type (see VictronDeviceType)
+    uint16_t nonceDataCounter;
+    uint8_t encryptKeyMatch;           // Should match encryption key byte 0
+    uint8_t victronEncryptedData[VICTRON_ENCRYPTED_LEN];
 } __attribute__((packed));
-// Decrypted payload structures for each device type
 
-// Solar Charger decrypted payload
 struct victronSolarChargerPayload {
-    uint8_t deviceState;               // Charge state (SolarChargerState enum)
-    uint8_t errorCode;                 // Error code
-    int16_t batteryVoltage;            // Battery voltage in 10mV units
-    int16_t batteryCurrent;            // Battery current in 10mA units (signed)
-    uint16_t yieldToday;               // Yield today in 10Wh units
-    uint16_t inputPower;               // PV power in 1W units
-    uint16_t loadCurrent;              // Load current in 10mA units (0xFFFF = no load)
-    uint8_t reserved[2];               // Reserved bytes
+    uint8_t deviceState;
+    uint8_t errorCode;
+    int16_t batteryVoltage;            // 10mV units
+    int16_t batteryCurrent;            // 10mA units (signed)
+    uint16_t yieldToday;               // 10Wh units
+    uint16_t inputPower;               // 1W units
+    uint16_t loadCurrent;              // 10mA units (0xFFFF = no load)
+    uint8_t reserved[2];
 } __attribute__((packed));
 
-// Battery Monitor decrypted payload
 struct victronBatteryMonitorPayload {
-    uint16_t remainingMins;            // Time remaining in minutes
-    uint16_t batteryVoltage;           // Battery voltage in 10mV units
-    uint8_t alarms;                    // Alarm bits
-    uint16_t auxData;                  // Aux voltage (10mV) or temperature (0.01K)
-    uint8_t currentLow;                // Battery current bits 0-7
-    uint8_t currentMid;                // Battery current bits 8-15
-    uint8_t currentHigh_consumedLow;   // Current bits 16-21 (low 6 bits), consumed bits 0-1 (high 2 bits)
-    uint8_t consumedMid;               // Consumed Ah bits 2-9
-    uint8_t consumedHigh;              // Consumed Ah bits 10-17
-    uint16_t soc;                      // State of charge in 0.1% units (10-bit value)
-    uint8_t reserved[2];               // Reserved bytes
+    uint16_t remainingMins;
+    uint16_t batteryVoltage;           // 10mV units
+    uint8_t alarms;
+    uint16_t auxData;                  // 10mV (voltage) or 0.01K (temperature)
+    uint8_t currentLow;
+    uint8_t currentMid;
+    uint8_t currentHigh_consumedLow;   // Current bits 16-21 (low 6), consumed bits 0-1 (high 2)
+    uint8_t consumedMid;
+    uint8_t consumedHigh;
+    uint16_t soc;                      // 0.1% units (10-bit)
+    uint8_t reserved[2];
 } __attribute__((packed));
 
-// Inverter decrypted payload
 struct victronInverterPayload {
-    uint8_t deviceState;               // Device state
-    uint8_t errorCode;                 // Error code
-    uint16_t batteryVoltage;           // Battery voltage in 10mV units
-    int16_t batteryCurrent;            // Battery current in 10mA units (signed)
-    uint8_t acPowerLow;                // AC Power bits 0-7
-    uint8_t acPowerMid;                // AC Power bits 8-15
-    uint8_t acPowerHigh;               // AC Power bits 16-23 (signed 24-bit)
-    uint8_t alarms;                    // Alarm bits
-    uint8_t reserved[4];               // Reserved bytes
+    uint8_t deviceState;
+    uint8_t errorCode;
+    uint16_t batteryVoltage;           // 10mV units
+    int16_t batteryCurrent;            // 10mA units (signed)
+    uint8_t acPowerLow;
+    uint8_t acPowerMid;
+    uint8_t acPowerHigh;               // Signed 24-bit
+    uint8_t alarms;
+    uint8_t reserved[4];
 } __attribute__((packed));
 
-// DC-DC Converter decrypted payload
 struct victronDCDCConverterPayload {
-    uint8_t chargeState;               // Charge state
-    uint8_t errorCode;                 // Error code
-    uint16_t inputVoltage;             // Input voltage in 10mV units
-    uint16_t outputVoltage;            // Output voltage in 10mV units
-    uint16_t outputCurrent;            // Output current in 10mA units
-    uint8_t reserved[6];               // Reserved bytes
+    uint8_t chargeState;
+    uint8_t errorCode;
+    uint16_t inputVoltage;             // 10mV units
+    uint16_t outputVoltage;            // 10mV units
+    uint16_t outputCurrent;            // 10mA units
+    uint8_t reserved[6];
 } __attribute__((packed));
 
-// Base structure for all device data
-struct VictronDeviceData {
-    String deviceName;
-    String macAddress;
-    VictronDeviceType deviceType;
-    int8_t rssi;
-    uint32_t lastUpdate;
-    bool dataValid;
+// ============================================================
+// Parsed data structures (flat, no inheritance)
+// ============================================================
 
-    VictronDeviceData() : deviceType(DEVICE_TYPE_UNKNOWN), rssi(-100),
-                          lastUpdate(0), dataValid(false) {}
-};
-
-// Solar Charger specific data
-struct SolarChargerData : public VictronDeviceData {
-    SolarChargerState chargeState;
+struct VictronSolarData {
+    uint8_t chargeState;       // SolarChargerState enum
+    uint8_t errorCode;
     float batteryVoltage;      // V
     float batteryCurrent;      // A
-    float panelVoltage;        // V (PV voltage)
     float panelPower;          // W
     uint16_t yieldToday;       // Wh
     float loadCurrent;         // A
-
-    SolarChargerData() : chargeState(CHARGER_OFF), batteryVoltage(0),
-                         batteryCurrent(0), panelVoltage(0), panelPower(0),
-                         yieldToday(0), loadCurrent(0) {
-        deviceType = DEVICE_TYPE_SOLAR_CHARGER;
-    }
 };
 
-// Battery Monitor/SmartShunt specific data
-struct BatteryMonitorData : public VictronDeviceData {
+struct VictronBatteryData {
     float voltage;             // V
-    float current;             // A (positive = charging, negative = discharging)
-    float temperature;         // °C
-    float auxVoltage;          // V (starter battery or midpoint)
-    uint16_t remainingMinutes; // Minutes
+    float current;             // A
+    float temperature;         // C (0 if aux is voltage)
+    float auxVoltage;          // V (0 if aux is temperature)
+    uint16_t remainingMinutes;
     float consumedAh;          // Ah
-    float soc;                 // State of Charge %
+    float soc;                 // %
     bool alarmLowVoltage;
     bool alarmHighVoltage;
     bool alarmLowSOC;
     bool alarmLowTemperature;
     bool alarmHighTemperature;
-
-    BatteryMonitorData() : voltage(0), current(0), temperature(0),
-                           auxVoltage(0), remainingMinutes(0), consumedAh(0),
-                           soc(0), alarmLowVoltage(false), alarmHighVoltage(false),
-                           alarmLowSOC(false), alarmLowTemperature(false),
-                           alarmHighTemperature(false) {
-        deviceType = DEVICE_TYPE_BATTERY_MONITOR;
-    }
 };
 
-// Inverter specific data
-struct InverterData : public VictronDeviceData {
+struct VictronInverterData {
     float batteryVoltage;      // V
     float batteryCurrent;      // A
     float acPower;             // W
-    uint8_t state;             // Inverter state
-    bool alarmHighVoltage;
+    uint8_t state;
     bool alarmLowVoltage;
+    bool alarmHighVoltage;
     bool alarmHighTemperature;
     bool alarmOverload;
-
-    InverterData() : batteryVoltage(0), batteryCurrent(0), acPower(0),
-                     state(0), alarmHighVoltage(false), alarmLowVoltage(false),
-                     alarmHighTemperature(false), alarmOverload(false) {
-        deviceType = DEVICE_TYPE_INVERTER;
-    }
 };
 
-// DC-DC Converter specific data
-struct DCDCConverterData : public VictronDeviceData {
+struct VictronDCDCData {
     float inputVoltage;        // V
     float outputVoltage;       // V
     float outputCurrent;       // A
     uint8_t chargeState;
     uint8_t errorCode;
-
-    DCDCConverterData() : inputVoltage(0), outputVoltage(0), outputCurrent(0),
-                          chargeState(0), errorCode(0) {
-        deviceType = DEVICE_TYPE_DCDC_CONVERTER;
-    }
 };
 
-// Forward declarations
-class VictronBLE;
+// ============================================================
+// Main device struct with tagged union
+// ============================================================
+
+struct VictronDevice {
+    char name[VICTRON_NAME_LEN];
+    char mac[VICTRON_MAC_LEN];
+    VictronDeviceType deviceType;
+    int8_t rssi;
+    uint32_t lastUpdate;
+    bool dataValid;
+    union {
+        VictronSolarData solar;
+        VictronBatteryData battery;
+        VictronInverterData inverter;
+        VictronDCDCData dcdc;
+    };
+};
+
+// ============================================================
+// Callback — simple function pointer
+// ============================================================
+
+typedef void (*VictronCallback)(const VictronDevice* device);
+
+// Forward declaration
 class VictronBLEAdvertisedDeviceCallbacks;
 
-// Callback interface for device data updates
+// ============================================================
+// Main VictronBLE class
+// ============================================================
+
+class VictronBLE {
+public:
+    VictronBLE();
+
+    bool begin(uint32_t scanDuration = 5);
+    bool addDevice(const char* name, const char* mac, const char* hexKey,
+                   VictronDeviceType type = DEVICE_TYPE_UNKNOWN);
+    void setCallback(VictronCallback cb) { callback = cb; }
+    void setDebug(bool enable) { debugEnabled = enable; }
+    size_t getDeviceCount() const { return deviceCount; }
+    void loop();
+
+private:
+    friend class VictronBLEAdvertisedDeviceCallbacks;
+
+    struct DeviceEntry {
+        VictronDevice device;
+        uint8_t key[16];
+        bool active;
+    };
+
+    DeviceEntry devices[VICTRON_MAX_DEVICES];
+    size_t deviceCount;
+    BLEScan* pBLEScan;
+    VictronBLEAdvertisedDeviceCallbacks* scanCallbackObj;
+    VictronCallback callback;
+    bool debugEnabled;
+    uint32_t scanDuration;
+    bool initialized;
+
+    static bool hexToBytes(const char* hex, uint8_t* out, size_t len);
+    static void normalizeMAC(const char* input, char* output);
+    DeviceEntry* findDevice(const char* normalizedMAC);
+    bool decryptData(const uint8_t* encrypted, size_t len,
+                     const uint8_t* key, const uint8_t* iv, uint8_t* decrypted);
+    void processDevice(BLEAdvertisedDevice& dev);
+    bool parseAdvertisement(DeviceEntry* entry, const victronManufacturerData& mfg);
+    bool parseSolarCharger(const uint8_t* data, size_t len, VictronSolarData& result);
+    bool parseBatteryMonitor(const uint8_t* data, size_t len, VictronBatteryData& result);
+    bool parseInverter(const uint8_t* data, size_t len, VictronInverterData& result);
+    bool parseDCDCConverter(const uint8_t* data, size_t len, VictronDCDCData& result);
+};
+
+// BLE scan callback (required by ESP32 BLE API)
+class VictronBLEAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+public:
+    VictronBLEAdvertisedDeviceCallbacks(VictronBLE* parent) : victronBLE(parent) {}
+    void onResult(BLEAdvertisedDevice advertisedDevice) override;
+private:
+    VictronBLE* victronBLE;
+};
+
+// ============================================================
+// Commented-out features — kept for reference / future use
+// ============================================================
+
+#if 0
+
+// --- VictronDeviceConfig (use addDevice(name, mac, key, type) directly) ---
+struct VictronDeviceConfig {
+    String name;
+    String macAddress;
+    String encryptionKey;
+    VictronDeviceType expectedType;
+    VictronDeviceConfig() : expectedType(DEVICE_TYPE_UNKNOWN) {}
+    VictronDeviceConfig(const String& n, const String& mac, const String& key, VictronDeviceType type = DEVICE_TYPE_UNKNOWN)
+        : name(n), macAddress(mac), encryptionKey(key), expectedType(type) {}
+};
+
+// --- Virtual callback interface (replaced by function pointer VictronCallback) ---
 class VictronDeviceCallback {
 public:
     virtual ~VictronDeviceCallback() {}
@@ -219,114 +274,17 @@ public:
     virtual void onDCDCConverterData(const DCDCConverterData& data) {}
 };
 
-// Device configuration structure
-struct VictronDeviceConfig {
-    String name;
-    String macAddress;
-    String encryptionKey;  // 32 character hex string
-    VictronDeviceType expectedType;
+// --- Per-type getter methods (use callback instead) ---
+bool getSolarChargerData(const String& macAddress, SolarChargerData& data);
+bool getBatteryMonitorData(const String& macAddress, BatteryMonitorData& data);
+bool getInverterData(const String& macAddress, InverterData& data);
+bool getDCDCConverterData(const String& macAddress, DCDCConverterData& data);
 
-    VictronDeviceConfig() : expectedType(DEVICE_TYPE_UNKNOWN) {}
-    VictronDeviceConfig(const String& n, const String& mac, const String& key, VictronDeviceType type = DEVICE_TYPE_UNKNOWN)
-        : name(n), macAddress(mac), encryptionKey(key), expectedType(type) {}
-};
+// --- Other removed methods ---
+void removeDevice(const String& macAddress);
+std::vector<String> getDevicesByType(VictronDeviceType type);
+String getLastError() const;
 
-// Main VictronBLE class
-class VictronBLE {
-public:
-    VictronBLE();
-    ~VictronBLE();
-
-    // Initialize BLE and start scanning
-    bool begin(uint32_t scanDuration = 5);
-
-    // Add a device to monitor
-    bool addDevice(const VictronDeviceConfig& config);
-    bool addDevice(const String& name, const String& macAddress, const String& encryptionKey,
-                   VictronDeviceType expectedType = DEVICE_TYPE_UNKNOWN);
-
-    // Remove a device
-    void removeDevice(const String& macAddress);
-
-    // Get device count
-    size_t getDeviceCount() const { return devices.size(); }
-
-    // Set callback for data updates
-    void setCallback(VictronDeviceCallback* cb) { callback = cb; }
-
-    // Process scanning (call in loop())
-    void loop();
-
-    // Get latest data for a device
-    bool getSolarChargerData(const String& macAddress, SolarChargerData& data);
-    bool getBatteryMonitorData(const String& macAddress, BatteryMonitorData& data);
-    bool getInverterData(const String& macAddress, InverterData& data);
-    bool getDCDCConverterData(const String& macAddress, DCDCConverterData& data);
-
-    // Get all devices of a specific type
-    std::vector<String> getDevicesByType(VictronDeviceType type);
-
-    // Enable/disable debug output
-    void setDebug(bool enable) { debugEnabled = enable; }
-
-    // Get last error message
-    String getLastError() const { return lastError; }
-
-private:
-    friend class VictronBLEAdvertisedDeviceCallbacks;
-
-    struct DeviceInfo {
-        VictronDeviceConfig config;
-        VictronDeviceData* data;
-        uint8_t encryptionKeyBytes[16];
-
-        DeviceInfo() : data(nullptr) {
-            memset(encryptionKeyBytes, 0, 16);
-        }
-        ~DeviceInfo() {
-            if (data) delete data;
-        }
-        DeviceInfo(const DeviceInfo&) = delete;
-        DeviceInfo& operator=(const DeviceInfo&) = delete;
-    };
-
-    std::map<String, DeviceInfo*> devices;
-    BLEScan* pBLEScan;
-    VictronBLEAdvertisedDeviceCallbacks* scanCallback;
-    VictronDeviceCallback* callback;
-    bool debugEnabled;
-    String lastError;
-    uint32_t scanDuration;
-    bool initialized;
-
-    // Internal methods
-    bool hexStringToBytes(const String& hex, uint8_t* bytes, size_t len);
-    bool decryptAdvertisement(const uint8_t* encrypted, size_t encLen,
-                              const uint8_t* key, const uint8_t* iv,
-                              uint8_t* decrypted);
-    bool parseAdvertisement(DeviceInfo* deviceInfo, const victronManufacturerData& mfgData);
-    void processDevice(BLEAdvertisedDevice& advertisedDevice);
-
-    VictronDeviceData* createDeviceData(VictronDeviceType type);
-    bool parseSolarCharger(const uint8_t* data, size_t len, SolarChargerData& result);
-    bool parseBatteryMonitor(const uint8_t* data, size_t len, BatteryMonitorData& result);
-    bool parseInverter(const uint8_t* data, size_t len, InverterData& result);
-    bool parseDCDCConverter(const uint8_t* data, size_t len, DCDCConverterData& result);
-
-    void debugPrint(const String& message);
-
-    String macAddressToString(BLEAddress address);
-    String normalizeMAC(const String& mac);
-};
-
-// BLE scan callback class
-class VictronBLEAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-public:
-    VictronBLEAdvertisedDeviceCallbacks(VictronBLE* parent) : victronBLE(parent) {}
-    void onResult(BLEAdvertisedDevice advertisedDevice) override;
-
-private:
-    VictronBLE* victronBLE;
-};
+#endif // commented-out features
 
 #endif // VICTRON_BLE_H

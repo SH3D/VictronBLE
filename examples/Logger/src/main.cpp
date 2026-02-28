@@ -3,8 +3,7 @@
  *
  * Demonstrates change-detection logging for Solar Charger data.
  * Only logs to serial when a value changes (ignoring RSSI), or once
- * per minute if nothing has changed. This keeps serial output quiet
- * and is useful for long-running monitoring / data logging.
+ * per minute if nothing has changed.
  *
  * Setup:
  * 1. Get your device encryption keys from the VictronConnect app
@@ -16,13 +15,11 @@
 
 VictronBLE victron;
 
-// Tracks last-logged values per device for change detection
 struct SolarChargerSnapshot {
     bool valid = false;
-    SolarChargerState chargeState;
+    uint8_t chargeState;
     float batteryVoltage;
     float batteryCurrent;
-    float panelVoltage;
     float panelPower;
     uint16_t yieldToday;
     float loadCurrent;
@@ -30,26 +27,26 @@ struct SolarChargerSnapshot {
     uint32_t packetsSinceLastLog = 0;
 };
 
-// Store a snapshot per device (index by MAC string)
 static const int MAX_DEVICES = 4;
-static String deviceMACs[MAX_DEVICES];
+static char deviceMACs[MAX_DEVICES][VICTRON_MAC_LEN];
 static SolarChargerSnapshot snapshots[MAX_DEVICES];
 static int deviceCount = 0;
 
-static const unsigned long LOG_INTERVAL_MS = 60000; // 1 minute
+static const unsigned long LOG_INTERVAL_MS = 60000;
 
-static int findOrAddDevice(const String& mac) {
+static int findOrAddDevice(const char* mac) {
     for (int i = 0; i < deviceCount; i++) {
-        if (deviceMACs[i] == mac) return i;
+        if (strcmp(deviceMACs[i], mac) == 0) return i;
     }
     if (deviceCount < MAX_DEVICES) {
-        deviceMACs[deviceCount] = mac;
+        strncpy(deviceMACs[deviceCount], mac, VICTRON_MAC_LEN - 1);
+        deviceMACs[deviceCount][VICTRON_MAC_LEN - 1] = '\0';
         return deviceCount++;
     }
     return -1;
 }
 
-static String chargeStateName(SolarChargerState state) {
+static const char* chargeStateName(uint8_t state) {
     switch (state) {
         case CHARGER_OFF:              return "Off";
         case CHARGER_LOW_POWER:        return "Low Power";
@@ -66,66 +63,58 @@ static String chargeStateName(SolarChargerState state) {
     }
 }
 
-static void logData(const SolarChargerData& data, const char* reason, uint32_t packets) {
-    Serial.println("[" + data.deviceName + "] " + reason +
-                   " pkts:" + String(packets) +
-                   " | State:" + chargeStateName(data.chargeState) +
-                   " Batt:" + String(data.batteryVoltage, 2) + "V" +
-                   " " + String(data.batteryCurrent, 2) + "A" +
-                   " PV:" + String(data.panelVoltage, 1) + "V" +
-                   " " + String(data.panelPower, 0) + "W" +
-                   " Yield:" + String(data.yieldToday) + "Wh" +
-                   (data.loadCurrent > 0 ? " Load:" + String(data.loadCurrent, 2) + "A" : ""));
+static void logData(const VictronDevice* dev, const VictronSolarData& s,
+                    const char* reason, uint32_t packets) {
+    Serial.printf("[%s] %s pkts:%lu | State:%s Batt:%.2fV %.2fA PV:%.0fW Yield:%uWh",
+                  dev->name, reason, packets,
+                  chargeStateName(s.chargeState),
+                  s.batteryVoltage, s.batteryCurrent,
+                  s.panelPower, s.yieldToday);
+    if (s.loadCurrent > 0)
+        Serial.printf(" Load:%.2fA", s.loadCurrent);
+    Serial.println();
 }
 
-class LoggerCallback : public VictronDeviceCallback {
-public:
-    void onSolarChargerData(const SolarChargerData& data) override {
-        int idx = findOrAddDevice(data.macAddress);
-        if (idx < 0) return;
+void onVictronData(const VictronDevice* dev) {
+    if (dev->deviceType != DEVICE_TYPE_SOLAR_CHARGER) return;
+    const auto& s = dev->solar;
 
-        SolarChargerSnapshot& prev = snapshots[idx];
-        unsigned long now = millis();
-        prev.packetsSinceLastLog++;
+    int idx = findOrAddDevice(dev->mac);
+    if (idx < 0) return;
 
-        if (!prev.valid) {
-            // First reading - always log
-            logData(data, "INIT", prev.packetsSinceLastLog);
+    SolarChargerSnapshot& prev = snapshots[idx];
+    unsigned long now = millis();
+    prev.packetsSinceLastLog++;
+
+    if (!prev.valid) {
+        logData(dev, s, "INIT", prev.packetsSinceLastLog);
+    } else {
+        bool changed = (prev.chargeState != s.chargeState) ||
+                       (prev.batteryVoltage != s.batteryVoltage) ||
+                       (prev.batteryCurrent != s.batteryCurrent) ||
+                       (prev.panelPower != s.panelPower) ||
+                       (prev.yieldToday != s.yieldToday) ||
+                       (prev.loadCurrent != s.loadCurrent);
+
+        if (changed) {
+            logData(dev, s, "CHG", prev.packetsSinceLastLog);
+        } else if (now - prev.lastLogTime >= LOG_INTERVAL_MS) {
+            logData(dev, s, "HEARTBEAT", prev.packetsSinceLastLog);
         } else {
-            // Check for changes (everything except RSSI)
-            bool changed = false;
-            if (prev.chargeState != data.chargeState)       changed = true;
-            if (prev.batteryVoltage != data.batteryVoltage) changed = true;
-            if (prev.batteryCurrent != data.batteryCurrent) changed = true;
-            if (prev.panelVoltage != data.panelVoltage)     changed = true;
-            if (prev.panelPower != data.panelPower)         changed = true;
-            if (prev.yieldToday != data.yieldToday)         changed = true;
-            if (prev.loadCurrent != data.loadCurrent)       changed = true;
-
-            if (changed) {
-                logData(data, "CHG", prev.packetsSinceLastLog);
-            } else if (now - prev.lastLogTime >= LOG_INTERVAL_MS) {
-                logData(data, "HEARTBEAT", prev.packetsSinceLastLog);
-            } else {
-                return; // Nothing to log
-            }
+            return;
         }
-
-        // Update snapshot
-        prev.packetsSinceLastLog = 0;
-        prev.valid = true;
-        prev.chargeState = data.chargeState;
-        prev.batteryVoltage = data.batteryVoltage;
-        prev.batteryCurrent = data.batteryCurrent;
-        prev.panelVoltage = data.panelVoltage;
-        prev.panelPower = data.panelPower;
-        prev.yieldToday = data.yieldToday;
-        prev.loadCurrent = data.loadCurrent;
-        prev.lastLogTime = now;
     }
-};
 
-LoggerCallback callback;
+    prev.packetsSinceLastLog = 0;
+    prev.valid = true;
+    prev.chargeState = s.chargeState;
+    prev.batteryVoltage = s.batteryVoltage;
+    prev.batteryCurrent = s.batteryCurrent;
+    prev.panelPower = s.panelPower;
+    prev.yieldToday = s.yieldToday;
+    prev.loadCurrent = s.loadCurrent;
+    prev.lastLogTime = now;
+}
 
 void setup() {
     Serial.begin(115200);
@@ -135,14 +124,12 @@ void setup() {
 
     if (!victron.begin(5)) {
         Serial.println("ERROR: Failed to initialize VictronBLE!");
-        Serial.println(victron.getLastError());
         while (1) delay(1000);
     }
 
     victron.setDebug(false);
-    victron.setCallback(&callback);
+    victron.setCallback(onVictronData);
 
-    // Add your devices here
     victron.addDevice(
         "Rainbow48V",
         "E4:05:42:34:14:F3",
@@ -157,7 +144,7 @@ void setup() {
         DEVICE_TYPE_SOLAR_CHARGER
     );
 
-    Serial.println("Configured " + String(victron.getDeviceCount()) + " devices");
+    Serial.printf("Configured %d devices\n", (int)victron.getDeviceCount());
     Serial.println("Logging on change, or every 60s heartbeat\n");
 }
 
