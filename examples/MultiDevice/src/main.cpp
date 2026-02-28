@@ -159,7 +159,17 @@ void setup() {
     Serial.println("\nStarting BLE scan...\n");
 }
 
+static uint32_t loopCount = 0;
+static uint32_t lastReport = 0;
+
 void loop() {
-    victron.loop();
-    delay(100);
+    victron.loop();  // Non-blocking: returns immediately if scan is running
+    loopCount++;
+
+    uint32_t now = millis();
+    if (now - lastReport >= 10000) {
+        Serial.printf("Loop iterations in last 10s: %lu\n", loopCount);
+        loopCount = 0;
+        lastReport = now;
+    }
 }

@@ -137,7 +137,7 @@ void setup() {
 }
 
 void loop() {
-    victron.loop();
+    victron.loop();  // Blocks for scanDuration seconds
 
     unsigned long now = millis();
     if (now - lastSendTime >= SEND_INTERVAL_MS) {
@@ -171,5 +171,4 @@ void loop() {
             blePacketCount, sendCount, sendFailCount, cachedCount);
     }
 
-    delay(100);
 }

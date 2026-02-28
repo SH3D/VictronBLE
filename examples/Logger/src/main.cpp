@@ -150,5 +150,4 @@ void setup() {
 
 void loop() {
     victron.loop();
-    delay(100);
 }

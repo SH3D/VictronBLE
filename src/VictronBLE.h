@@ -204,6 +204,7 @@ public:
                    VictronDeviceType type = DEVICE_TYPE_UNKNOWN);
     void setCallback(VictronCallback cb) { callback = cb; }
     void setDebug(bool enable) { debugEnabled = enable; }
+    void setMinInterval(uint32_t ms) { minIntervalMs = ms; }
     size_t getDeviceCount() const { return deviceCount; }
     void loop();
 
@@ -213,6 +214,7 @@ private:
     struct DeviceEntry {
         VictronDevice device;
         uint8_t key[16];
+        uint16_t lastNonce;
         bool active;
     };
 
@@ -223,6 +225,7 @@ private:
     VictronCallback callback;
     bool debugEnabled;
     uint32_t scanDuration;
+    uint32_t minIntervalMs;
     bool initialized;
 
     static bool hexToBytes(const char* hex, uint8_t* out, size_t len);

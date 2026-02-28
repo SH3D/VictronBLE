@@ -11,7 +11,8 @@
 
 VictronBLE::VictronBLE()
     : deviceCount(0), pBLEScan(nullptr), scanCallbackObj(nullptr),
-      callback(nullptr), debugEnabled(false), scanDuration(5), initialized(false) {
+      callback(nullptr), debugEnabled(false), scanDuration(5),
+      minIntervalMs(1000), initialized(false) {
     memset(devices, 0, sizeof(devices));
 }
 
@@ -64,10 +65,18 @@ bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey
     return true;
 }
 
+// Scan complete callback — sets flag so loop() restarts
+static bool s_scanning = false;
+static void onScanDone(BLEScanResults results) {
+    s_scanning = false;
+}
+
 void VictronBLE::loop() {
     if (!initialized) return;
-    pBLEScan->start(scanDuration, false);
-    pBLEScan->clearResults();
+    if (!s_scanning) {
+        pBLEScan->clearResults();
+        s_scanning = pBLEScan->start(scanDuration, onScanDone, false);
+    }
 }
 
 // BLE scan callback
@@ -101,11 +110,26 @@ void VictronBLE::processDevice(BLEAdvertisedDevice& advertisedDevice) {
         return;
     }
 
-    if (debugEnabled) Serial.printf("[VictronBLE] Processing: %s\n", entry->device.name);
+    // Skip if nonce unchanged (data hasn't changed on the device)
+    if (entry->device.dataValid && mfgData.nonceDataCounter == entry->lastNonce) {
+        // Still update RSSI since we got a packet
+        entry->device.rssi = advertisedDevice.getRSSI();
+        return;
+    }
+
+    // Skip if minimum interval hasn't elapsed
+    uint32_t now = millis();
+    if (entry->device.dataValid && (now - entry->device.lastUpdate) < minIntervalMs) {
+        return;
+    }
+
+    if (debugEnabled) Serial.printf("[VictronBLE] Processing: %s nonce:0x%04X\n",
+                                     entry->device.name, mfgData.nonceDataCounter);
 
     if (parseAdvertisement(entry, mfgData)) {
+        entry->lastNonce = mfgData.nonceDataCounter;
         entry->device.rssi = advertisedDevice.getRSSI();
-        entry->device.lastUpdate = millis();
+        entry->device.lastUpdate = now;
     }
 }
 
