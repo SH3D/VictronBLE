@@ -1,5 +1,58 @@
 # Version History
 
+## 0.4.1 (2026-02-28)
+
+Major rework of library internals. Breaking API change — not backwards compatible with 0.3.x.
+
+### Callback API rewrite
+- Replaced virtual callback class (`VictronDeviceCallback` with 4 override methods) with a
+  single function pointer (`VictronCallback`). Users now provide a plain function instead of
+  subclassing. The callback receives a `VictronDevice*` and switches on `deviceType` to access
+  the appropriate data via a tagged union.
+
+### Non-blocking BLE scanning
+- `loop()` is now non-blocking — returns immediately if a scan is already running.
+  Previously it blocked for the entire scan duration (default 5 seconds).
+- Scan restarts automatically when it completes.
+
+### Callback throttling
+- Nonce-based deduplication: skips decrypt/parse/callback when the device's data hasn't
+  changed (detected via the nonce field in the BLE advertisement header).
+- Configurable minimum interval (`setMinInterval()`, default 1000ms) limits callback
+  frequency even when data is changing rapidly.
+- Encryption key byte check before AES decryption for early rejection of mismatched keys.
+
+### Memory and code reduction
+- Replaced `std::map<String, DeviceInfo*>` with a fixed array (max 8 devices, linear search).
+  Eliminates heap allocation for device storage.
+- Replaced Arduino `String` with fixed `char[]` arrays throughout (MAC: 12 chars, name: 32 chars).
+  Eliminates heap fragmentation from dynamic string operations.
+- Replaced inheritance hierarchy (`VictronDeviceData` base + 4 derived classes) with a flat
+  `VictronDevice` struct using a tagged union. No more `new`/`delete` for device data.
+- Removed `std::map` and `std::vector` includes entirely.
+- Source reduced from ~970 lines to ~510 lines (48% reduction).
+- Flash savings: ~11-14 KB across examples.
+
+### Bug fixes
+- Fixed undefined behavior: derived objects were deleted through a base pointer without a
+  virtual destructor. Now uses flat structs, no polymorphic delete.
+- Removed incorrect `panelVoltage` calculation (was dividing PV power by battery current,
+  which is wrong for MPPT chargers). The BLE protocol does not transmit PV voltage.
+- Removed spurious `nullPad` byte from manufacturer data struct.
+- Device type is now auto-detected from the BLE advertisement record type. The type
+  parameter in `addDevice()` is optional.
+
+### Removed features (commented out in header for reference)
+- `VictronDeviceConfig` struct — use `addDevice(name, mac, key, type)` directly
+- Per-type getter methods (`getSolarChargerData()`, etc.) — use callback instead
+- `removeDevice()`, `getDevicesByType()`, `getLastError()`
+
+### Examples updated
+- All examples updated for new callback API
+- Removed `panelVoltage` from ESPNow packet structs (Repeater, FakeRepeater, Receiver)
+- Removed unnecessary `delay(100)` from loop functions
+- Added ESPNow Repeater and Receiver examples
+
 ## 0.3.1 (2026-02-11)
 
 ### Changes

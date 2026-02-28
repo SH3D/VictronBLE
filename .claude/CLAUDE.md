@@ -198,3 +198,57 @@ a843eb9 Keep v0.3.1
 - examples/Receiver/src/main.cpp
 - examples/Repeater/src/main.cpp
 
+
+### Session: 2026-02-28 14:32
+**Commits:**
+```
+4944757 Fix to be non blocking without tasks
+31765c7 Update notes
+84d153c Single callback version - vastly simplified.
+```
+**Modified files:**
+- examples/Logger/src/main.cpp
+- examples/MultiDevice/src/main.cpp
+- examples/Repeater/src/main.cpp
+- library.json
+- library.properties
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
+
+### Session: 2026-02-28 14:33
+**Commits:**
+```
+4944757 Fix to be non blocking without tasks
+31765c7 Update notes
+84d153c Single callback version - vastly simplified.
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- VERSIONS
+- examples/Logger/src/main.cpp
+- examples/MultiDevice/src/main.cpp
+- examples/Repeater/src/main.cpp
+- library.json
+- library.properties
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
+
+### Session: 2026-02-28 14:36
+**Commits:**
+```
+4944757 Fix to be non blocking without tasks
+31765c7 Update notes
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- VERSIONS
+- examples/Logger/src/main.cpp
+- examples/MultiDevice/src/main.cpp
+- examples/Repeater/src/main.cpp
+- library.json
+- library.properties
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+
