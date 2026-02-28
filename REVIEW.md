@@ -1,6 +1,6 @@
 # VictronBLE Code Review
 
-## Part 1: Bug Fixes, Efficiency & Simplification
+## Part 1: Bug Fixes, Efficiency & Simplification ✅ COMPLETE (v0.4.1)
 
 ### Bugs
 
@@ -117,9 +117,33 @@ void victron_loop();
 ~4 functions instead of ~15 methods.
 
 
+All items implemented in v0.4.1. See [VERSIONS](VERSIONS) for full changelog.
+
 ---
 
 ## Part 2: Multi-Platform BLE Support
+
+### Recommended Test Hardware
+
+Two cheap BLE development boards for testing the platform abstraction:
+
+**1. Seeed XIAO nRF52840 (~$10 USD)**
+- Nordic nRF52840 SoC, Bluetooth 5.0, onboard antenna
+- Arduino-compatible via Adafruit nRF52 board support package
+- Ultra-small (21x17.5mm), USB-C, battery charging built in
+- 1MB flash, 256KB RAM, 2MB QSPI flash
+- Has mbedtls available via the nRF SDK
+- https://www.seeedstudio.com/Seeed-XIAO-BLE-nRF52840-p-5201.html
+
+**2. Raspberry Pi Pico W (~$6 USD)**
+- RP2040 + Infineon CYW43439 (WiFi + Bluetooth 5.2 with BLE)
+- Arduino-compatible via arduino-pico core (earlephilhower)
+- BLE Central role supported (needed for passive scanning)
+- Very widely available and cheap
+- Different architecture (ARM Cortex-M0+) from ESP32 (Xtensa/RISC-V), good for testing portability
+- https://www.raspberrypi.com/products/raspberry-pi-pico/
+
+Both boards are under $15, Arduino-compatible, and have BLE Central support needed for passive scanning of Victron advertisements. They use different BLE stacks (nRF SoftDevice vs CYW43 BTstack) which will validate the transport abstraction layer.
 
 ### Current BLE Dependencies
 
