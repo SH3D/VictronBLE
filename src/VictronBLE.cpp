@@ -1,38 +1,24 @@
 /**
- * VictronBLE - ESP32 library for Victron Energy BLE devices
- * Implementation file
+ * VictronBLE - portable library for Victron Energy BLE devices
+ * Common implementation (platform-independent: decoding + AES-128-CTR decrypt).
+ * BLE scanning lives in the per-platform backends under src/esp32 and src/nrf52.
  *
  * Copyright (c) 2025 Scott Penrose
  * License: MIT
  */
 
 #include "VictronBLE.h"
+#include "crypto/vble_aes.h"
 #include <string.h>
 
 VictronBLE::VictronBLE()
-    : deviceCount(0), pBLEScan(nullptr), scanCallbackObj(nullptr),
-      callback(nullptr), debugEnabled(false), scanDuration(5),
-      minIntervalMs(1000), initialized(false) {
+    : deviceCount(0), callback(nullptr), debugEnabled(false),
+      scanDuration(5), minIntervalMs(1000), initialized(false)
+#if defined(VICTRON_BACKEND_ESP32)
+    , pBLEScan(nullptr), scanCallbackObj(nullptr)
+#endif
+{
     memset(devices, 0, sizeof(devices));
-}
-
-bool VictronBLE::begin(uint32_t scanDuration) {
-    if (initialized) return true;
-    this->scanDuration = scanDuration;
-
-    BLEDevice::init("VictronBLE");
-    pBLEScan = BLEDevice::getScan();
-    if (!pBLEScan) return false;
-
-    scanCallbackObj = new VictronBLEAdvertisedDeviceCallbacks(this);
-    pBLEScan->setAdvertisedDeviceCallbacks(scanCallbackObj, true);
-    pBLEScan->setActiveScan(false);
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);
-
-    initialized = true;
-    if (debugEnabled) Serial.println("[VictronBLE] Initialized");
-    return true;
 }
 
 bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey,
@@ -65,48 +51,26 @@ bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey
     return true;
 }
 
-// Scan complete callback — sets flag so loop() restarts
-static bool s_scanning = false;
-static void onScanDone(BLEScanResults results) {
-    s_scanning = false;
-}
-
-void VictronBLE::loop() {
-    if (!initialized) return;
-    if (!s_scanning) {
-        pBLEScan->clearResults();
-        s_scanning = pBLEScan->start(scanDuration, onScanDone, false);
-    }
-}
-
-// BLE scan callback
-void VictronBLEAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice) {
-    if (victronBLE) victronBLE->processDevice(advertisedDevice);
-}
-
-void VictronBLE::processDevice(BLEAdvertisedDevice& advertisedDevice) {
-    if (!advertisedDevice.haveManufacturerData()) return;
-
-    // getManufacturerData() returns std::string on older ESP32 BLE libraries and
-    // an Arduino String on newer ones. Both expose c_str()/length(); constructing
-    // from (ptr, len) preserves the embedded null bytes present in binary data.
-    auto mfg = advertisedDevice.getManufacturerData();
-    std::string raw(mfg.c_str(), mfg.length());
-    if (raw.length() < 10) return;
+// Platform-independent advertisement handler. Each BLE backend extracts the
+// manufacturer-data bytes (vendor ID first), MAC string and RSSI from a scan
+// result and feeds them here.
+void VictronBLE::onAdvertisement(const uint8_t* mfgData, size_t len,
+                                 const char* macStr, int8_t rssi) {
+    if (!mfgData || len < 10) return;
 
     // Quick vendor ID check before any other work
-    uint16_t vendorID = (uint8_t)raw[0] | ((uint8_t)raw[1] << 8);
+    uint16_t vendorID = mfgData[0] | ((uint16_t)mfgData[1] << 8);
     if (vendorID != VICTRON_MANUFACTURER_ID) return;
 
-    // Parse manufacturer data
-    victronManufacturerData mfgData;
-    memset(&mfgData, 0, sizeof(mfgData));
-    size_t copyLen = raw.length() > sizeof(mfgData) ? sizeof(mfgData) : raw.length();
-    raw.copy(reinterpret_cast<char*>(&mfgData), copyLen);
+    // Copy into the wire-format struct
+    victronManufacturerData mfg;
+    memset(&mfg, 0, sizeof(mfg));
+    size_t copyLen = len > sizeof(mfg) ? sizeof(mfg) : len;
+    memcpy(&mfg, mfgData, copyLen);
 
     // Normalize MAC and find device
     char normalizedMAC[VICTRON_MAC_LEN];
-    normalizeMAC(advertisedDevice.getAddress().toString().c_str(), normalizedMAC);
+    normalizeMAC(macStr, normalizedMAC);
 
     DeviceEntry* entry = findDevice(normalizedMAC);
     if (!entry) {
@@ -115,9 +79,8 @@ void VictronBLE::processDevice(BLEAdvertisedDevice& advertisedDevice) {
     }
 
     // Skip if nonce unchanged (data hasn't changed on the device)
-    if (entry->device.dataValid && mfgData.nonceDataCounter == entry->lastNonce) {
-        // Still update RSSI since we got a packet
-        entry->device.rssi = advertisedDevice.getRSSI();
+    if (entry->device.dataValid && mfg.nonceDataCounter == entry->lastNonce) {
+        entry->device.rssi = rssi;  // still refresh RSSI
         return;
     }
 
@@ -128,11 +91,11 @@ void VictronBLE::processDevice(BLEAdvertisedDevice& advertisedDevice) {
     }
 
     if (debugEnabled) Serial.printf("[VictronBLE] Processing: %s nonce:0x%04X\n",
-                                     entry->device.name, mfgData.nonceDataCounter);
+                                     entry->device.name, mfg.nonceDataCounter);
 
-    if (parseAdvertisement(entry, mfgData)) {
-        entry->lastNonce = mfgData.nonceDataCounter;
-        entry->device.rssi = advertisedDevice.getRSSI();
+    if (parseAdvertisement(entry, mfg)) {
+        entry->lastNonce = mfg.nonceDataCounter;
+        entry->device.rssi = rssi;
         entry->device.lastUpdate = now;
     }
 }
@@ -204,24 +167,13 @@ bool VictronBLE::parseAdvertisement(DeviceEntry* entry, const victronManufacture
 bool VictronBLE::decryptData(const uint8_t* encrypted, size_t len,
                              const uint8_t* key, const uint8_t* iv,
                              uint8_t* decrypted) {
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-
-    if (mbedtls_aes_setkey_enc(&aes, key, 128) != 0) {
-        mbedtls_aes_free(&aes);
-        return false;
-    }
-
-    size_t nc_off = 0;
-    uint8_t nonce_counter[16];
-    uint8_t stream_block[16];
-    memcpy(nonce_counter, iv, 16);
-    memset(stream_block, 0, 16);
-
-    int ret = mbedtls_aes_crypt_ctr(&aes, len, &nc_off, nonce_counter,
-                                     stream_block, encrypted, decrypted);
-    mbedtls_aes_free(&aes);
-    return (ret == 0);
+    // AES-128-CTR via the bundled portable implementation (was mbedTLS on ESP32).
+    // CTR is symmetric and operates in place, so copy then XOR the keystream.
+    struct vble_aes_ctx ctx;
+    vble_aes_init_ctx_iv(&ctx, key, iv);
+    memcpy(decrypted, encrypted, len);
+    vble_aes_ctr_xcrypt(&ctx, decrypted, len);
+    return true;
 }
 
 bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, VictronSolarData& result) {

@@ -1,7 +1,7 @@
 # VictronBLE Project Context
 
 ## Project Overview
-Arduino/ESP32 library for reading Victron Energy devices via Bluetooth Low Energy (BLE).
+Portable Arduino library for reading Victron Energy devices via Bluetooth Low Energy (BLE). Runs on ESP32 (Bluedroid) and nRF52840 (Bluefruit); BLE scanning is the only platform-specific code (src/esp32, src/nrf52), while decoding and AES-128-CTR crypto are common.
 
 ## Key Files
 - `src/` - Main library source code
@@ -291,4 +291,32 @@ cd3b462 ignore local
 **Modified files:**
 - .gitignore
 - README.md
+
+
+### Session: 2026-06-04 22:59
+**Commits:**
+```
+105d66b Update info
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- README.md
+
+
+### Session: 2026-06-04 23:46
+**Commits:**
+```
+105d66b Update info
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- README.md
+- VERSIONS
+- examples/MultiDevice/platformio.ini
+- examples/MultiDevice/src/main.cpp
+- library.json
+- library.properties
+- src/VictronBLE.cpp
+- src/VictronBLE.h
+- src/crypto/vble_aes.c
 

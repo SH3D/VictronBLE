@@ -1,5 +1,9 @@
 /**
- * VictronBLE - ESP32 library for Victron Energy BLE devices
+ * VictronBLE - portable library for Victron Energy BLE devices
+ *
+ * Runs on ESP32 (Bluedroid) and nRF52840 (Bluefruit); the BLE scanning backend
+ * is the only platform-specific code (see src/esp32 and src/nrf52). Decoding and
+ * AES-128-CTR decryption are common to all targets.
  *
  * Based on Victron's official BLE Advertising protocol documentation
  * Inspired by hoberman's examples and keshavdv's Python library
@@ -12,10 +16,21 @@
 #define VICTRON_BLE_H
 
 #include <Arduino.h>
-#include <BLEDevice.h>
-#include <BLEAdvertisedDevice.h>
-#include <BLEScan.h>
-#include "mbedtls/aes.h"
+
+// --- Platform BLE backend selection ---
+// The BLE scanning layer is the only platform-specific part of the library.
+// Decoding and crypto are common to all targets.
+#if defined(ARDUINO_ARCH_ESP32)
+  #include <BLEDevice.h>
+  #include <BLEAdvertisedDevice.h>
+  #include <BLEScan.h>
+  #define VICTRON_BACKEND_ESP32 1
+#elif defined(ARDUINO_ARCH_NRF52) || defined(NRF52840_XXAA) || defined(NRF52832_XXAA)
+  #include <bluefruit.h>
+  #define VICTRON_BACKEND_NRF52 1
+#else
+  #error "VictronBLE: unsupported platform (need ESP32 Arduino or Adafruit/Seeed nRF52 core)"
+#endif
 
 // --- Constants ---
 static constexpr uint16_t VICTRON_MANUFACTURER_ID = 0x02E1;
@@ -216,8 +231,6 @@ public:
     void loop();
 
 private:
-    friend class VictronBLEAdvertisedDeviceCallbacks;
-
     struct DeviceEntry {
         VictronDevice device;
         uint8_t key[16];
@@ -225,10 +238,9 @@ private:
         bool active;
     };
 
+    // --- Common state (platform-independent) ---
     DeviceEntry devices[VICTRON_MAX_DEVICES];
     size_t deviceCount;
-    BLEScan* pBLEScan;
-    VictronBLEAdvertisedDeviceCallbacks* scanCallbackObj;
     VictronCallback callback;
     bool debugEnabled;
     uint32_t scanDuration;
@@ -240,15 +252,31 @@ private:
     DeviceEntry* findDevice(const char* normalizedMAC);
     bool decryptData(const uint8_t* encrypted, size_t len,
                      const uint8_t* key, const uint8_t* iv, uint8_t* decrypted);
-    void processDevice(BLEAdvertisedDevice& dev);
+
+    // Common entry point fed by each platform BLE backend with one raw
+    // manufacturer-data record (vendor ID first), the device MAC and RSSI.
+    void onAdvertisement(const uint8_t* mfgData, size_t len,
+                         const char* macStr, int8_t rssi);
     bool parseAdvertisement(DeviceEntry* entry, const victronManufacturerData& mfg);
     bool parseSolarCharger(const uint8_t* data, size_t len, VictronSolarData& result);
     bool parseACCharger(const uint8_t* data, size_t len, VictronACChargerData& result);
     bool parseBatteryMonitor(const uint8_t* data, size_t len, VictronBatteryData& result);
     bool parseInverter(const uint8_t* data, size_t len, VictronInverterData& result);
     bool parseDCDCConverter(const uint8_t* data, size_t len, VictronDCDCData& result);
+
+    // --- Platform-specific BLE backend (see src/esp32 and src/nrf52) ---
+#if defined(VICTRON_BACKEND_ESP32)
+    friend class VictronBLEAdvertisedDeviceCallbacks;
+    BLEScan* pBLEScan;
+    VictronBLEAdvertisedDeviceCallbacks* scanCallbackObj;
+    void processDevice(BLEAdvertisedDevice& dev);
+#elif defined(VICTRON_BACKEND_NRF52)
+    static VictronBLE* s_instance;
+    static void scanCallback(ble_gap_evt_adv_report_t* report);
+#endif
 };
 
+#if defined(VICTRON_BACKEND_ESP32)
 // BLE scan callback (required by ESP32 BLE API)
 class VictronBLEAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 public:
@@ -257,6 +285,7 @@ public:
 private:
     VictronBLE* victronBLE;
 };
+#endif
 
 // ============================================================
 // Commented-out features — kept for reference / future use

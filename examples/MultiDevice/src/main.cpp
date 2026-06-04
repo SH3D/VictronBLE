@@ -3,10 +3,14 @@
  *
  * Demonstrates reading data from multiple Victron device types via BLE.
  *
+ * The same sketch runs on both ESP32 and nRF52840 — the BLE backend is selected
+ * automatically at compile time. Pick the target with the PlatformIO
+ * environment (see platformio.ini): e.g. `esp32dev` or `xiao_nrf52840`.
+ *
  * Setup:
- * 1. Get your device encryption keys from VictronConnect app
+ * 1. Get your device encryption keys from the VictronConnect app
  *    (Settings > Product Info > Instant readout via Bluetooth > Show)
- * 2. Update the device configurations below with your MAC and key
+ * 2. Update the device configurations below with your MAC and key.
  */
 
 #include <Arduino.h>
@@ -18,6 +22,7 @@ static uint32_t solarChargerCount = 0;
 static uint32_t batteryMonitorCount = 0;
 static uint32_t inverterCount = 0;
 static uint32_t dcdcConverterCount = 0;
+static uint32_t acChargerCount = 0;
 
 static const char* chargeStateName(uint8_t state) {
     switch (state) {
@@ -120,6 +125,21 @@ void onVictronData(const VictronDevice* dev) {
             Serial.printf("Last Update: %lus ago\n", (millis() - dev->lastUpdate) / 1000);
             break;
         }
+        case DEVICE_TYPE_AC_CHARGER: {
+            const auto& ac = dev->acCharger;
+            acChargerCount++;
+            Serial.printf("\n=== AC Charger: %s (#%lu) ===\n", dev->name, acChargerCount);
+            Serial.printf("MAC: %s\n", dev->mac);
+            Serial.printf("RSSI: %d dBm\n", dev->rssi);
+            Serial.printf("State: %s\n", chargeStateName(ac.chargeState));
+            Serial.printf("Output 1: %.2f V  %.2f A\n", ac.voltage1, ac.current1);
+            if (ac.voltage2 > 0) Serial.printf("Output 2: %.2f V  %.2f A\n", ac.voltage2, ac.current2);
+            if (ac.voltage3 > 0) Serial.printf("Output 3: %.2f V  %.2f A\n", ac.voltage3, ac.current3);
+            if (ac.temperature != 0) Serial.printf("Temperature: %.0f C\n", ac.temperature);
+            if (ac.acCurrent > 0) Serial.printf("AC Current: %.2f A\n", ac.acCurrent);
+            Serial.printf("Last Update: %lus ago\n", (millis() - dev->lastUpdate) / 1000);
+            break;
+        }
         default:
             break;
     }
@@ -127,7 +147,9 @@ void onVictronData(const VictronDevice* dev) {
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    // Wait briefly for USB CDC serial (nRF52/native-USB boards); don't block forever
+    uint32_t start = millis();
+    while (!Serial && (millis() - start) < 5000) delay(10);
 
     Serial.println("\n\n=================================");
     Serial.println("VictronBLE Multi-Device Example");
@@ -141,6 +163,7 @@ void setup() {
     victron.setDebug(false);
     victron.setCallback(onVictronData);
 
+    // Replace with your own devices (MAC + 32-char hex key from VictronConnect)
     victron.addDevice(
         "Rainbow48V",
         "E4:05:42:34:14:F3",
@@ -163,7 +186,7 @@ static uint32_t loopCount = 0;
 static uint32_t lastReport = 0;
 
 void loop() {
-    victron.loop();  // Non-blocking: returns immediately if scan is running
+    victron.loop();  // Non-blocking on both backends
     loopCount++;
 
     uint32_t now = millis();

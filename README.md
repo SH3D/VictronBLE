@@ -1,6 +1,6 @@
 # VictronBLE
 
-ESP32 library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements.
+A portable Arduino library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements — runs on both **ESP32** and **nRF52840**.
 
 **⚠️ API CHANGE in v0.4 — not backwards compatible with v0.3.x**
 
@@ -8,15 +8,17 @@ v0.4 is a major rework of the library internals: new callback API, reduced memor
 
 ---
 
-Why another library? Most of the Victron BLE examples are built into other frameworks (e.g. ESPHome) and I want a library that can be used in all ESP32 systems, including ESPHome or other frameworks. With long term plan to try and move others to this library and improve code with many eyes.
+Why another library? Most of the Victron BLE examples are built into other frameworks (e.g. ESPHome) or are locked to a single chip. The goal here is one library that works across ESP32 and nRF52 (and is easy to extend to more), usable standalone or inside ESPHome and other frameworks, with a long-term plan to move others onto it and improve the code with many eyes.
 
-Currently supporting ESP32 S and C series (tested on older ESP32, ESP32-S3 and ESP32-C3). Other chipsets can be added with abstraction of Bluetooth code.
+Supports **ESP32** (original, S and C series — tested on older ESP32, ESP32-S3 and ESP32-C3) and **nRF52840** (Adafruit/Seeed Bluefruit core, e.g. Seeed XIAO nRF52840). All decoding and decryption is shared; only a thin BLE scanning backend is platform-specific (`src/esp32/`, `src/nrf52/`), so other chipsets can be added by implementing one more backend.
 
 ## Features
 
+- ✅ **Multi-Platform**: One API for ESP32 and nRF52840; backend chosen at compile time
+- ✅ **No External Dependencies**: Bundled AES-128-CTR — no mbedTLS or crypto library needed
 - ✅ **Multiple Device Support**: Monitor multiple Victron devices simultaneously
-- ✅ **All Device Types**: Solar chargers, battery monitors, inverters, DC-DC converters
-- ✅ **Framework Agnostic**: Works with Arduino and ESP-IDF
+- ✅ **All Device Types**: Solar chargers, battery monitors, inverters, DC-DC converters, AC chargers
+- ✅ **Framework Friendly**: Works with Arduino (and ESP-IDF on ESP32)
 - ✅ **Clean API**: Simple, intuitive interface with callback support
 - ✅ **No Pairing Required**: Reads BLE advertisement data directly
 - ✅ **Low Power**: Uses passive BLE scanning
@@ -34,8 +36,12 @@ Currently supporting ESP32 S and C series (tested on older ESP32, ESP32-S3 and E
 
 ## Hardware Requirements
 
-- ESP32, ESP32-S3, or ESP32-C3 board
+- An ESP32 (original / S / C series) **or** an nRF52840 board (Adafruit/Seeed
+  Bluefruit core — e.g. Seeed XIAO nRF52840)
 - Victron devices with BLE "Instant Readout" enabled
+
+The BLE backend is selected automatically at compile time from the board's
+architecture — no code changes are needed to switch platforms.
 
 ## Installation
 
@@ -59,6 +65,23 @@ lib_deps =
 cd lib
 git clone https://gitea.sh3d.com.au/Sh3d/VictronBLE.git
 ```
+
+#### nRF52840 board note
+
+The nRF52 backend uses the **Bluefruit** library from the Adafruit/Seeed nRF52
+core, so pick a board that uses that core. For the Seeed XIAO nRF52840, the
+board files live in a community platform fork — use the `*_adafruit` variant
+(the plain `xiaoble` variant uses the mbed core, which has no Bluefruit):
+```ini
+[env:xiao_nrf52840]
+platform = https://github.com/maxgerhardt/platform-nordicnrf52
+board = xiaoble_adafruit          ; XIAO nRF52840 Sense: xiaoblesense_adafruit
+framework = arduino
+lib_deps = scottp/victronble
+```
+The Adafruit Feather nRF52840 (`board = adafruit_feather_nrf52840`) works out of
+the box with the stock PlatformIO `nordicnrf52` platform. The `MultiDevice`
+example's `platformio.ini` includes ready-made ESP32 and nRF52 environments.
 
 ### Arduino IDE
 
@@ -381,11 +404,40 @@ This library implements the Victron BLE Advertising protocol:
 
 Based on official [Victron BLE documentation](https://www.victronenergy.com/live/vedirect_protocol:faq).
 
+## Architecture & Portability
+
+The library keeps everything platform-independent except the BLE radio:
+
+```
+src/
+├── VictronBLE.{h,cpp}      Common API, device management, payload decoding
+├── crypto/vble_aes.{h,c}   Bundled AES-128-CTR (no external dependency)
+├── esp32/                  ESP32 backend  — Bluedroid BLEScan
+└── nrf52/                  nRF52 backend  — Bluefruit passive scan
+```
+
+- **One BLE HAL.** Each backend extracts the manufacturer data, MAC and RSSI
+  from a scan result and calls the shared `onAdvertisement()`. All decryption and
+  decoding is common code. The correct backend is selected automatically at
+  compile time from the board architecture (`ARDUINO_ARCH_ESP32` /
+  `ARDUINO_ARCH_NRF52`) — there is nothing platform-specific in your sketch.
+- **No external crypto.** AES-128-CTR is bundled (a trimmed, NIST-verified
+  tiny-AES), so the library no longer depends on mbedTLS or any crypto library
+  and builds identically on every target.
+- **Adding a platform** means implementing one more backend (scan → extract →
+  `onAdvertisement`); the rest is reused unchanged.
+
+> The data callback runs in the BLE event context (the scan task on ESP32, the
+> SoftDevice/Bluefruit handler on nRF52). Keep work in the callback light — copy
+> what you need and process it from `loop()`.
+
 ## Examples
 
 See the `examples/` directory for:
 
-- **MultiDevice**: Monitor multiple devices with callbacks
+- **MultiDevice**: Monitor multiple devices with callbacks. One sketch, multiple
+  PlatformIO environments — builds for ESP32 (`esp32dev`, …) and nRF52840
+  (`xiao_nrf52840`, `adafruit_feather_nrf52840`).
 - **Logger**: Change-detection logging for Solar Charger data
 - **Repeater**: Collect BLE data and re-transmit via ESPNow broadcast
 - **Receiver**: Receive ESPNow packets from a Repeater and display data

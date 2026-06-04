@@ -1,5 +1,31 @@
 # Version History
 
+## 0.6.0 (2026-06-04)
+
+Multi-platform support. The library now runs on **nRF52840** (Adafruit/Seeed
+Bluefruit core) in addition to ESP32, sharing all decoding and crypto code.
+
+### Platform abstraction
+- The BLE scanning layer is now the only platform-specific code, split into
+  backends under `src/esp32/` (ESP32 Bluedroid `BLEScan`) and `src/nrf52/`
+  (Bluefruit passive scan). Both extract manufacturer data + MAC + RSSI and feed
+  a shared `VictronBLE::onAdvertisement()`. The public API is unchanged.
+- The correct backend is auto-selected at compile time; no user configuration
+  needed beyond picking the board.
+
+### Portable crypto (no external dependency)
+- Replaced the ESP32-only mbedTLS AES with a small bundled AES-128-CTR
+  implementation (`src/crypto/`, trimmed/prefixed tiny-AES, public domain,
+  NIST SP 800-38A verified). Decryption output is byte-identical to the previous
+  mbedTLS path; the library now has no external crypto dependency on any target.
+
+### New
+- The `MultiDevice` example now builds for both ESP32 and nRF52840 from a single
+  sketch — its `platformio.ini` adds `xiao_nrf52840` (Seeed XIAO nRF52840, board
+  `xiaoble_adafruit` via the maxgerhardt nRF52 platform fork) and
+  `adafruit_feather_nrf52840` environments alongside the ESP32 ones.
+- `nrf52` added to the supported architectures / PlatformIO platforms.
+
 ## 0.5.0 (2026-06-04)
 
 Decoding accuracy fixes (thanks to community bug reports from Karsten, Cory, Kevin and Dan)
