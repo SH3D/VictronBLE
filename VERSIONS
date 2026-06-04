@@ -1,5 +1,33 @@
 # Version History
 
+## 0.5.0 (2026-06-04)
+
+Decoding accuracy fixes (thanks to community bug reports from Karsten, Cory, Kevin and Dan)
+plus new AC Charger support. Field layouts verified against the keshavdv/victron-ble
+reference implementation and the Victron "Extra Manufacturer Data" specification.
+
+### Bug fixes
+- **Battery monitor decoding rewritten.** The `victronBatteryMonitorPayload` struct had
+  wrong field widths (8-bit alarm instead of 16, no 2-bit aux-mode field) which cascaded
+  and misaligned current, consumed Ah and SOC. `parseBatteryMonitor()` now decodes the
+  bit-packed payload directly by bit offset: signed voltage, 16-bit alarm, aux value +
+  2-bit aux mode (replacing the unreliable `< 3000` voltage/temperature heuristic),
+  22-bit signed current, 20-bit consumed Ah (×-0.1 Ah), 10-bit SOC (×0.1 %).
+- **Solar charger battery current scale fixed.** Was multiplied by 0.01 (10× too small);
+  the field is in 0.1 A units. Load current is now read as the correct 9-bit field.
+- **Compile error with newer ESP32 BLE library fixed.** `getManufacturerData()` now returns
+  an Arduino `String` on recent cores; `processDevice()` handles both `String` and
+  `std::string` while preserving the binary payload's embedded null bytes.
+- **Device type IDs corrected.** The enum was off-by-one from 0x07 onward, mislabelling
+  AC chargers (0x08) as Lynx Smart BMS. Now matches the Victron protocol:
+  0x07 GX Device, 0x08 AC Charger, 0x09 Smart Battery Protect, 0x0A Lynx Smart BMS,
+  0x0B Multi RS, 0x0C VE.Bus, 0x0D DC Energy Meter, 0x0F Orion XS.
+
+### New features
+- **AC Charger support** (Blue Smart IP22/IP65/IP67, device type 0x08). New
+  `VictronACChargerData` struct (three output voltage/current banks, temperature, AC
+  current) and `DEVICE_TYPE_AC_CHARGER` handling.
+
 ## 0.4.1 (2026-02-28)
 
 Major rework of library internals. Breaking API change — not backwards compatible with 0.3.x.

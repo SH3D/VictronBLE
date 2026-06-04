@@ -33,11 +33,14 @@ enum VictronDeviceType {
     DEVICE_TYPE_DCDC_CONVERTER = 0x04,
     DEVICE_TYPE_SMART_LITHIUM = 0x05,
     DEVICE_TYPE_INVERTER_RS = 0x06,
-    DEVICE_TYPE_SMART_BATTERY_PROTECT = 0x07,
-    DEVICE_TYPE_LYNX_SMART_BMS = 0x08,
-    DEVICE_TYPE_MULTI_RS = 0x09,
-    DEVICE_TYPE_VE_BUS = 0x0A,
-    DEVICE_TYPE_DC_ENERGY_METER = 0x0B
+    DEVICE_TYPE_GX_DEVICE = 0x07,
+    DEVICE_TYPE_AC_CHARGER = 0x08,
+    DEVICE_TYPE_SMART_BATTERY_PROTECT = 0x09,
+    DEVICE_TYPE_LYNX_SMART_BMS = 0x0A,
+    DEVICE_TYPE_MULTI_RS = 0x0B,
+    DEVICE_TYPE_VE_BUS = 0x0C,
+    DEVICE_TYPE_DC_ENERGY_METER = 0x0D,
+    DEVICE_TYPE_ORION_XS = 0x0F
 };
 
 // --- Device state for Solar Charger ---
@@ -72,27 +75,17 @@ struct victronManufacturerData {
 struct victronSolarChargerPayload {
     uint8_t deviceState;
     uint8_t errorCode;
-    int16_t batteryVoltage;            // 10mV units
-    int16_t batteryCurrent;            // 10mA units (signed)
-    uint16_t yieldToday;               // 10Wh units
+    int16_t batteryVoltage;            // 0.01V units (signed)
+    int16_t batteryCurrent;            // 0.1A units (signed)
+    uint16_t yieldToday;               // 0.01kWh (10Wh) units
     uint16_t inputPower;               // 1W units
-    uint16_t loadCurrent;              // 10mA units (0xFFFF = no load)
+    uint16_t loadCurrent;              // 9-bit field, 0.1A units (0x1FF = no load)
     uint8_t reserved[2];
 } __attribute__((packed));
 
-struct victronBatteryMonitorPayload {
-    uint16_t remainingMins;
-    uint16_t batteryVoltage;           // 10mV units
-    uint8_t alarms;
-    uint16_t auxData;                  // 10mV (voltage) or 0.01K (temperature)
-    uint8_t currentLow;
-    uint8_t currentMid;
-    uint8_t currentHigh_consumedLow;   // Current bits 16-21 (low 6), consumed bits 0-1 (high 2)
-    uint8_t consumedMid;
-    uint8_t consumedHigh;
-    uint16_t soc;                      // 0.1% units (10-bit)
-    uint8_t reserved[2];
-} __attribute__((packed));
+// NOTE: The battery monitor payload is bit-packed (16-bit alarm, 2-bit aux mode,
+// 22-bit current, 20-bit consumed Ah, 10-bit SOC) and does NOT byte-align, so it
+// is decoded by bit offset directly in parseBatteryMonitor() rather than a struct.
 
 struct victronInverterPayload {
     uint8_t deviceState;
@@ -127,6 +120,19 @@ struct VictronSolarData {
     float panelPower;          // W
     uint16_t yieldToday;       // Wh
     float loadCurrent;         // A
+};
+
+struct VictronACChargerData {
+    uint8_t chargeState;       // SolarChargerState enum (shared charger states)
+    uint8_t errorCode;
+    float voltage1;            // V (output 1)
+    float current1;            // A (output 1)
+    float voltage2;            // V (output 2, 0 if absent)
+    float current2;            // A (output 2, 0 if absent)
+    float voltage3;            // V (output 3, 0 if absent)
+    float current3;            // A (output 3, 0 if absent)
+    float temperature;         // C (0 if not available)
+    float acCurrent;           // A (0 if not available)
 };
 
 struct VictronBatteryData {
@@ -179,6 +185,7 @@ struct VictronDevice {
         VictronBatteryData battery;
         VictronInverterData inverter;
         VictronDCDCData dcdc;
+        VictronACChargerData acCharger;
     };
 };
 
@@ -236,6 +243,7 @@ private:
     void processDevice(BLEAdvertisedDevice& dev);
     bool parseAdvertisement(DeviceEntry* entry, const victronManufacturerData& mfg);
     bool parseSolarCharger(const uint8_t* data, size_t len, VictronSolarData& result);
+    bool parseACCharger(const uint8_t* data, size_t len, VictronACChargerData& result);
     bool parseBatteryMonitor(const uint8_t* data, size_t len, VictronBatteryData& result);
     bool parseInverter(const uint8_t* data, size_t len, VictronInverterData& result);
     bool parseDCDCConverter(const uint8_t* data, size_t len, VictronDCDCData& result);

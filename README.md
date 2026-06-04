@@ -29,6 +29,7 @@ Currently supporting ESP32 S and C series (tested on older ESP32, ESP32-S3 and E
 - **Battery Monitors**: SmartShunt, BMV-712 Smart, BMV-700 series
 - **Inverters**: MultiPlus, Quattro, Phoenix (with VE.Bus BLE dongle)
 - **DC-DC Converters**: Orion Smart, Orion XS
+- **AC Chargers**: Blue Smart IP22 / IP65 / IP67 chargers
 - **Others**: Smart Battery Protect, Lynx Smart BMS, Smart Lithium batteries
 
 ## Hardware Requirements
@@ -40,16 +41,23 @@ Currently supporting ESP32 S and C series (tested on older ESP32, ESP32-S3 and E
 
 ### PlatformIO
 
-1. Add to `platformio.ini`:
+1. Add to `platformio.ini` (recommended — installs from the PlatformIO registry):
 ```ini
-lib_deps = 
-    https://gitea.sh3d.com.au/Sh3d/VictronBLE
+lib_deps =
+    scottp/victronble
+```
+
+   Or install directly from git. Note the **`.git` suffix is required** — the bare
+   repository URL is not accepted by PlatformIO:
+```ini
+lib_deps =
+    https://gitea.sh3d.com.au/Sh3d/VictronBLE.git
 ```
 
 2. Or clone into your project's `lib` folder:
 ```bash
 cd lib
-git clone https://gitea.sh3d.com.au/Sh3d/VictronBLE
+git clone https://gitea.sh3d.com.au/Sh3d/VictronBLE.git
 ```
 
 ### Arduino IDE
@@ -262,6 +270,23 @@ struct VictronDCDCData {
 };
 ```
 
+#### VictronACChargerData
+
+```cpp
+struct VictronACChargerData {
+    uint8_t chargeState;            // SolarChargerState enum (shared charger states)
+    uint8_t errorCode;
+    float voltage1;                 // V (output 1)
+    float current1;                 // A (output 1)
+    float voltage2;                 // V (output 2, 0 if absent)
+    float current2;                 // A (output 2, 0 if absent)
+    float voltage3;                 // V (output 3, 0 if absent)
+    float current3;                 // A (output 3, 0 if absent)
+    float temperature;              // C (0 if not available)
+    float acCurrent;                // A (0 if not available)
+};
+```
+
 ## Advanced Usage
 
 ### Multiple Devices
@@ -298,6 +323,11 @@ void onVictronData(const VictronDevice* dev) {
         case DEVICE_TYPE_DCDC_CONVERTER:
             Serial.printf("%s: %.2fV -> %.2fV\n", dev->name,
                 dev->dcdc.inputVoltage, dev->dcdc.outputVoltage);
+            break;
+        case DEVICE_TYPE_AC_CHARGER:
+            Serial.printf("%s: %.2fV %.2fA %.0fC\n", dev->name,
+                dev->acCharger.voltage1, dev->acCharger.current1,
+                dev->acCharger.temperature);
             break;
         default:
             break;
@@ -397,7 +427,9 @@ See [VERSIONS](VERSIONS) file for detailed changelog and release history.
 
 ## Support
 
-- 📫 Report issues on GitHub
+- 📫 Report issues: the Gitea instance does not currently allow public sign-ups, so
+  email <scottp@dd.com.au> with bug reports, device decode problems, or new device
+  requests (debug log output is very helpful).
 - 📖 Check the examples directory
 - 🔧 Enable debug mode for diagnostics
 - 📚 See [Victron documentation](https://www.victronenergy.com/live/)
