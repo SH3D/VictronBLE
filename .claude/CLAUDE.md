@@ -281,3 +281,14 @@ a843eb9 Keep v0.3.1
 - README.md
 - REVIEW.md
 
+
+### Session: 2026-06-04 21:23
+**Commits:**
+```
+cd3b462 ignore local
+7706f88 Bug fixes for reported issues
+```
+**Modified files:**
+- .gitignore
+- README.md
+

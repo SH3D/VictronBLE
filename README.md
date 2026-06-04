@@ -393,9 +393,14 @@ See the `examples/` directory for:
 
 ## Contributing
 
+The primary repository is hosted on [Gitea](https://gitea.sh3d.com.au/Sh3d/VictronBLE),
+with a mirror on **GitHub at <https://github.com/SH3D/VictronBLE>**. Since the Gitea
+instance does not currently allow public sign-ups, please raise **issues and pull
+requests on the GitHub mirror**.
+
 Contributions welcome! Please:
 
-1. Fork the repository
+1. Fork the [GitHub mirror](https://github.com/SH3D/VictronBLE)
 2. Create a feature branch
 3. Test thoroughly on real hardware
 4. Submit a pull request
@@ -427,9 +432,10 @@ See [VERSIONS](VERSIONS) file for detailed changelog and release history.
 
 ## Support
 
-- 📫 Report issues: the Gitea instance does not currently allow public sign-ups, so
-  email <scottp@dd.com.au> with bug reports, device decode problems, or new device
-  requests (debug log output is very helpful).
+- 📫 Report issues on the [GitHub mirror](https://github.com/SH3D/VictronBLE/issues)
+  (the Gitea instance does not currently allow public sign-ups). Bug reports, device
+  decode problems and new device requests are all welcome — debug log output is very
+  helpful.
 - 📖 Check the examples directory
 - 🔧 Enable debug mode for diagnostics
 - 📚 See [Victron documentation](https://www.victronenergy.com/live/)
