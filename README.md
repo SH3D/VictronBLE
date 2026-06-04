@@ -2,9 +2,7 @@
 
 A portable Arduino library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements — runs on both **ESP32** and **nRF52840**.
 
-**⚠️ API CHANGE in v0.4 — not backwards compatible with v0.3.x**
-
-v0.4 is a major rework of the library internals: new callback API, reduced memory usage, non-blocking scanning. See [VERSIONS](VERSIONS) for full details. A stable **v1.0** release with a consistent, long-term API is coming soon.
+v0.6 adds **multi-platform support** (ESP32 + nRF52840) via a hardware-abstracted BLE backend and dependency-free bundled crypto. (v0.5 brought the decoding accuracy fixes and AC charger support; v0.4 reworked the internals — function-pointer callback API, reduced memory usage, non-blocking scanning.) See [VERSIONS](VERSIONS) for full details. A stable **v1.0** release with a consistent, long-term API is coming soon.
 
 ---
 

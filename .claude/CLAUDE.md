@@ -320,3 +320,31 @@ cd3b462 ignore local
 - src/VictronBLE.h
 - src/crypto/vble_aes.c
 
+
+### Session: 2026-06-04 23:58
+**Commits:**
+```
+53fa6fa ignore pka file
+de6607d Branch version ready for testing with nRF52
+```
+**Modified files:**
+- .gitignore
+- README.md
+- UPGRADE_V0.4.md
+- VERSIONS
+- library.json
+- library.properties
+
+
+### Session: 2026-06-05 00:00
+**Commits:**
+```
+53fa6fa ignore pka file
+de6607d Branch version ready for testing with nRF52
+```
+**Modified files:**
+- .claude/CLAUDE.md
+- .gitignore
+- README.md
+- UPGRADE_V0.4.md
+
