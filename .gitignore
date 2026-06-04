@@ -12,6 +12,8 @@ compile_commands.json
 !.vscode/extensions.json
 .history/
 
+bugs
+
 # Build artifacts
 *.o
 *.a
