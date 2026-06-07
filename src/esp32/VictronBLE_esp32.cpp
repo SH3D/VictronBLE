@@ -53,6 +53,15 @@ void VictronBLEAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertise
 }
 
 void VictronBLE::processDevice(BLEAdvertisedDevice& advertisedDevice) {
+    // Debug: print every BLE device seen (before any filtering)
+    if (debugEnabled) {
+        Serial.printf("[VictronBLE] MAC=%-17s  RSSI=%-4d  Name=%-20s  ManData=%s\n",
+            advertisedDevice.getAddress().toString().c_str(),
+            advertisedDevice.getRSSI(),
+            advertisedDevice.haveName() ? advertisedDevice.getName().c_str() : "(none)",
+            advertisedDevice.haveManufacturerData() ? "yes" : "no");
+    }
+
     if (!advertisedDevice.haveManufacturerData()) return;
 
     // getManufacturerData() returns std::string on older ESP32 BLE libraries and

@@ -160,7 +160,7 @@ void setup() {
         while (1) delay(1000);
     }
 
-    victron.setDebug(false);
+    victron.setDebug(true);
     victron.setCallback(onVictronData);
 
     // Replace with your own devices (MAC + 32-char hex key from VictronConnect)
