@@ -1,6 +1,6 @@
 {
   "name": "victronble",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Portable Arduino library for reading Victron Energy device data via Bluetooth Low Energy (BLE) advertisements. Runs on ESP32, ESP32-S3, ESP32-C3 and nRF52 (nRF52840, nRF52832). Supports SmartSolar MPPT, SmartShunt, BMV, MultiPlus, Orion, Blue Smart AC chargers and other Victron devices. No external crypto dependency.",
   "keywords": "victron, ble, bluetooth, solar, mppt, battery, smartshunt, smartsolar, bmv, inverter, multiplus, esp32, esp32-s3, esp32-c3, nrf52, nrf52840, nrf52832, xiao, iot, energy, monitoring",
   "repository": {
