@@ -1,15 +1,23 @@
 /**
  * VictronBLE - portable library for Victron Energy BLE devices
- * Common implementation (platform-independent: decoding + AES-128-CTR decrypt).
- * BLE scanning lives in the per-platform backends under src/esp32 and src/nrf52.
+ *
+ * Thin Arduino wrapper over the pure C core (src/victronble_core.c): this
+ * file owns the device registry, nonce dedup and rate limiting; decryption
+ * and payload decoding live in victronble_decode(). BLE scanning lives in
+ * the per-platform backends under src/esp32 and src/nrf52.
  *
  * Copyright (c) 2025 Scott Penrose
  * License: MIT
  */
 
 #include "VictronBLE.h"
-#include "crypto/vble_aes.h"
+#include "victronble.h"
 #include <string.h>
+#include <math.h>
+
+// The public API keeps the legacy "absent = 0" convention; the core reports
+// absent fields as NAN.
+static inline float nan_to_zero(float v) { return isnan(v) ? 0.0f : v; }
 
 VictronBLE::VictronBLE()
     : deviceCount(0), callback(nullptr), debugEnabled(false),
@@ -24,7 +32,6 @@ VictronBLE::VictronBLE()
 bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey,
                            VictronDeviceType type) {
     if (deviceCount >= VICTRON_MAX_DEVICES) return false;
-    if (!hexKey || strlen(hexKey) != 32) return false;
     if (!mac || strlen(mac) == 0) return false;
 
     char normalizedMAC[VICTRON_MAC_LEN];
@@ -35,6 +42,8 @@ bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey
 
     DeviceEntry* entry = &devices[deviceCount];
     memset(entry, 0, sizeof(DeviceEntry));
+
+    if (!victronble_parse_key(hexKey, entry->key)) return false;
     entry->active = true;
 
     strncpy(entry->device.name, name ? name : "", VICTRON_NAME_LEN - 1);
@@ -42,8 +51,6 @@ bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey
     memcpy(entry->device.mac, normalizedMAC, VICTRON_MAC_LEN);
     entry->device.deviceType = type;
     entry->device.rssi = -100;
-
-    if (!hexToBytes(hexKey, entry->key, 16)) return false;
 
     deviceCount++;
 
@@ -56,17 +63,7 @@ bool VictronBLE::addDevice(const char* name, const char* mac, const char* hexKey
 // result and feeds them here.
 void VictronBLE::onAdvertisement(const uint8_t* mfgData, size_t len,
                                  const char* macStr, int8_t rssi) {
-    if (!mfgData || len < 10) return;
-
-    // Quick vendor ID check before any other work
-    uint16_t vendorID = mfgData[0] | ((uint16_t)mfgData[1] << 8);
-    if (vendorID != VICTRON_MANUFACTURER_ID) return;
-
-    // Copy into the wire-format struct
-    victronManufacturerData mfg;
-    memset(&mfg, 0, sizeof(mfg));
-    size_t copyLen = len > sizeof(mfg) ? sizeof(mfg) : len;
-    memcpy(&mfg, mfgData, copyLen);
+    if (!victronble_is_product_adv(mfgData, len)) return;
 
     // Normalize MAC and find device
     char normalizedMAC[VICTRON_MAC_LEN];
@@ -79,7 +76,8 @@ void VictronBLE::onAdvertisement(const uint8_t* mfgData, size_t len,
     }
 
     // Skip if nonce unchanged (data hasn't changed on the device)
-    if (entry->device.dataValid && mfg.nonceDataCounter == entry->lastNonce) {
+    uint16_t nonce = mfgData[7] | ((uint16_t)mfgData[8] << 8);
+    if (entry->device.dataValid && nonce == entry->lastNonce) {
         entry->device.rssi = rssi;  // still refresh RSSI
         return;
     }
@@ -90,273 +88,122 @@ void VictronBLE::onAdvertisement(const uint8_t* mfgData, size_t len,
         return;
     }
 
+    victronble_record_t rec;
+    victronble_err_t err = victronble_decode(mfgData, len, entry->key, &rec);
+    if (err != VICTRONBLE_OK) {
+        if (debugEnabled) Serial.printf("[VictronBLE] Decode %s: %s\n",
+                                        entry->device.name, victronble_strerror(err));
+        return;
+    }
+
     if (debugEnabled) Serial.printf("[VictronBLE] Processing: %s nonce:0x%04X\n",
-                                     entry->device.name, mfg.nonceDataCounter);
+                                     entry->device.name, rec.nonce);
 
-    if (parseAdvertisement(entry, mfg)) {
-        entry->lastNonce = mfg.nonceDataCounter;
-        entry->device.rssi = rssi;
-        entry->device.lastUpdate = now;
-    }
+    storeRecord(entry, rec);
+    entry->lastNonce = nonce;
+    entry->device.rssi = rssi;
+    entry->device.lastUpdate = now;
+    entry->device.dataValid = true;
+    if (callback) callback(&entry->device);
 }
 
-bool VictronBLE::parseAdvertisement(DeviceEntry* entry, const victronManufacturerData& mfg) {
-    if (debugEnabled) {
-        Serial.printf("[VictronBLE] Beacon:0x%02X Record:0x%02X Nonce:0x%04X\n",
-                      mfg.beaconType, mfg.victronRecordType, mfg.nonceDataCounter);
-    }
-
-    // Quick key check before expensive decryption
-    if (mfg.encryptKeyMatch != entry->key[0]) {
-        if (debugEnabled) Serial.println("[VictronBLE] Key byte mismatch");
-        return false;
-    }
-
-    // Build IV from nonce (2 bytes little-endian + 14 zero bytes)
-    uint8_t iv[16] = {0};
-    iv[0] = mfg.nonceDataCounter & 0xFF;
-    iv[1] = (mfg.nonceDataCounter >> 8) & 0xFF;
-
-    // Decrypt
-    uint8_t decrypted[VICTRON_ENCRYPTED_LEN];
-    if (!decryptData(mfg.victronEncryptedData, VICTRON_ENCRYPTED_LEN,
-                     entry->key, iv, decrypted)) {
-        if (debugEnabled) Serial.println("[VictronBLE] Decryption failed");
-        return false;
-    }
-
-    // Parse based on record type (auto-detects device type)
-    bool ok = false;
-    switch (mfg.victronRecordType) {
-        case DEVICE_TYPE_SOLAR_CHARGER:
-            entry->device.deviceType = DEVICE_TYPE_SOLAR_CHARGER;
-            ok = parseSolarCharger(decrypted, VICTRON_ENCRYPTED_LEN, entry->device.solar);
-            break;
-        case DEVICE_TYPE_BATTERY_MONITOR:
-            entry->device.deviceType = DEVICE_TYPE_BATTERY_MONITOR;
-            ok = parseBatteryMonitor(decrypted, VICTRON_ENCRYPTED_LEN, entry->device.battery);
-            break;
-        case DEVICE_TYPE_INVERTER:
-        case DEVICE_TYPE_INVERTER_RS:
-        case DEVICE_TYPE_MULTI_RS:
-        case DEVICE_TYPE_VE_BUS:
-            entry->device.deviceType = DEVICE_TYPE_INVERTER;
-            ok = parseInverter(decrypted, VICTRON_ENCRYPTED_LEN, entry->device.inverter);
-            break;
-        case DEVICE_TYPE_DCDC_CONVERTER:
-            entry->device.deviceType = DEVICE_TYPE_DCDC_CONVERTER;
-            ok = parseDCDCConverter(decrypted, VICTRON_ENCRYPTED_LEN, entry->device.dcdc);
-            break;
-        case DEVICE_TYPE_AC_CHARGER:
-            entry->device.deviceType = DEVICE_TYPE_AC_CHARGER;
-            ok = parseACCharger(decrypted, VICTRON_ENCRYPTED_LEN, entry->device.acCharger);
-            break;
-        default:
-            if (debugEnabled) Serial.printf("[VictronBLE] Unknown type: 0x%02X\n", mfg.victronRecordType);
-            return false;
-    }
-
-    if (ok) {
-        entry->device.dataValid = true;
-        if (callback) callback(&entry->device);
-    }
-
-    return ok;
-}
-
-bool VictronBLE::decryptData(const uint8_t* encrypted, size_t len,
-                             const uint8_t* key, const uint8_t* iv,
-                             uint8_t* decrypted) {
-    // AES-128-CTR via the bundled portable implementation (was mbedTLS on ESP32).
-    // CTR is symmetric and operates in place, so copy then XOR the keystream.
-    struct vble_aes_ctx ctx;
-    vble_aes_init_ctx_iv(&ctx, key, iv);
-    memcpy(decrypted, encrypted, len);
-    vble_aes_ctr_xcrypt(&ctx, decrypted, len);
-    return true;
-}
-
-bool VictronBLE::parseSolarCharger(const uint8_t* data, size_t len, VictronSolarData& result) {
-    if (len < sizeof(victronSolarChargerPayload)) return false;
-    const auto* p = reinterpret_cast<const victronSolarChargerPayload*>(data);
-
-    result.chargeState = p->deviceState;
-    result.errorCode = p->errorCode;
-    result.batteryVoltage = p->batteryVoltage * 0.01f;   // 0.01V units
-    result.batteryCurrent = p->batteryCurrent * 0.1f;    // 0.1A units
-    result.yieldToday = p->yieldToday * 10;
-    result.panelPower = p->inputPower;
-    // Load current is a 9-bit field (0.1A units); 0x1FF = no load output
-    uint16_t loadRaw = p->loadCurrent & 0x1FF;
-    result.loadCurrent = (loadRaw != 0x1FF) ? loadRaw * 0.1f : 0;
-
-    if (debugEnabled) {
-        Serial.printf("[VictronBLE] Solar: %.2fV %.2fA %dW State:%d\n",
-                      result.batteryVoltage, result.batteryCurrent,
-                      (int)result.panelPower, result.chargeState);
-    }
-    return true;
-}
-
-bool VictronBLE::parseACCharger(const uint8_t* data, size_t len, VictronACChargerData& result) {
-    // Payload is bit-packed (10 fields, 104 bits ending in byte 12). Decode LSB-first.
-    if (len < 13) return false;
-
-    size_t bit = 0;
-    auto readBits = [&](uint8_t width) -> uint32_t {
-        uint32_t value = 0;
-        for (uint8_t i = 0; i < width; i++) {
-            size_t b = bit + i;
-            value |= (uint32_t)((data[b >> 3] >> (b & 7)) & 0x01) << i;
+// Map a decoded core record into the legacy public structs (NAN -> 0).
+void VictronBLE::storeRecord(DeviceEntry* entry, const victronble_record_t& rec) {
+    switch (rec.type) {
+    case VICTRONBLE_DEV_SOLAR_CHARGER: {
+        entry->device.deviceType = DEVICE_TYPE_SOLAR_CHARGER;
+        VictronSolarData& s = entry->device.solar;
+        s.chargeState = rec.u.solar.state;
+        s.errorCode = rec.u.solar.error;
+        s.batteryVoltage = rec.u.solar.battery_voltage;
+        s.batteryCurrent = rec.u.solar.battery_current;
+        s.panelPower = rec.u.solar.pv_power;
+        s.yieldToday = (uint16_t)rec.u.solar.yield_today_wh;
+        s.loadCurrent = nan_to_zero(rec.u.solar.load_current);
+        if (debugEnabled) {
+            Serial.printf("[VictronBLE] Solar: %.2fV %.2fA %dW State:%d\n",
+                          s.batteryVoltage, s.batteryCurrent,
+                          (int)s.panelPower, s.chargeState);
         }
-        bit += width;
-        return value;
-    };
-
-    result.chargeState = (uint8_t)readBits(8);
-    result.errorCode = (uint8_t)readBits(8);
-
-    uint32_t v1 = readBits(13), i1 = readBits(11);
-    uint32_t v2 = readBits(13), i2 = readBits(11);
-    uint32_t v3 = readBits(13), i3 = readBits(11);
-    uint32_t temp = readBits(7);
-    uint32_t acCur = readBits(9);
-
-    result.voltage1 = (v1 != 0x1FFF) ? v1 * 0.01f : 0;
-    result.current1 = (i1 != 0x7FF)  ? i1 * 0.1f  : 0;
-    result.voltage2 = (v2 != 0x1FFF) ? v2 * 0.01f : 0;
-    result.current2 = (i2 != 0x7FF)  ? i2 * 0.1f  : 0;
-    result.voltage3 = (v3 != 0x1FFF) ? v3 * 0.01f : 0;
-    result.current3 = (i3 != 0x7FF)  ? i3 * 0.1f  : 0;
-    result.temperature = (temp != 0x7F) ? (float)temp - 40.0f : 0;  // C offset by -40
-    result.acCurrent = (acCur != 0x1FF) ? acCur * 0.1f : 0;
-
-    if (debugEnabled) {
-        Serial.printf("[VictronBLE] AC Charger: %.2fV %.2fA Temp:%.0fC State:%d\n",
-                      result.voltage1, result.current1, result.temperature, result.chargeState);
+        break;
     }
-    return true;
-}
-
-bool VictronBLE::parseBatteryMonitor(const uint8_t* data, size_t len, VictronBatteryData& result) {
-    // The payload is bit-packed and not byte-aligned, so it is decoded by bit
-    // offset directly rather than via a struct. SOC ends at bit 117 (byte 14).
-    if (len < 15) return false;
-
-    // TTG (bits 0-15), unsigned minutes
-    result.remainingMinutes = data[0] | ((uint16_t)data[1] << 8);
-
-    // Voltage (bits 16-31), signed, 0.01V units
-    result.voltage = (int16_t)(data[2] | ((uint16_t)data[3] << 8)) * 0.01f;
-
-    // Alarm (bits 32-47), 16-bit bitmask
-    uint16_t alarm = data[4] | ((uint16_t)data[5] << 8);
-    result.alarmLowVoltage = (alarm & 0x0001) != 0;
-    result.alarmHighVoltage = (alarm & 0x0002) != 0;
-    result.alarmLowSOC = (alarm & 0x0004) != 0;
-    result.alarmLowTemperature = (alarm & 0x0010) != 0;
-    result.alarmHighTemperature = (alarm & 0x0020) != 0;
-
-    // Aux value (bits 48-63) interpreted per aux mode (bits 64-65)
-    uint16_t auxRaw = data[6] | ((uint16_t)data[7] << 8);
-    uint8_t auxMode = data[8] & 0x03;  // 0=aux voltage, 1=midpoint, 2=temperature, 3=none
-    if (auxMode == 0) {
-        result.auxVoltage = auxRaw * 0.01f;
-        result.temperature = 0;
-    } else if (auxMode == 2) {
-        result.temperature = auxRaw * 0.01f - 273.15f;  // 0.01K -> C
-        result.auxVoltage = 0;
-    } else {
-        result.auxVoltage = 0;
-        result.temperature = 0;
+    case VICTRONBLE_DEV_BATTERY_MONITOR: {
+        entry->device.deviceType = DEVICE_TYPE_BATTERY_MONITOR;
+        VictronBatteryData& b = entry->device.battery;
+        b.voltage = rec.u.batmon.voltage;
+        b.current = rec.u.batmon.current;
+        b.temperature = nan_to_zero(rec.u.batmon.temperature);
+        b.auxVoltage = nan_to_zero(rec.u.batmon.aux_voltage);
+        b.remainingMinutes = rec.u.batmon.remaining_minutes;
+        b.consumedAh = rec.u.batmon.consumed_ah;
+        b.soc = rec.u.batmon.soc;
+        b.alarmLowVoltage = (rec.u.batmon.alarm & 0x0001) != 0;
+        b.alarmHighVoltage = (rec.u.batmon.alarm & 0x0002) != 0;
+        b.alarmLowSOC = (rec.u.batmon.alarm & 0x0004) != 0;
+        b.alarmLowTemperature = (rec.u.batmon.alarm & 0x0010) != 0;
+        b.alarmHighTemperature = (rec.u.batmon.alarm & 0x0020) != 0;
+        if (debugEnabled) {
+            Serial.printf("[VictronBLE] Battery: %.2fV %.2fA SOC:%.1f%%\n",
+                          b.voltage, b.current, b.soc);
+        }
+        break;
     }
-
-    // Battery current (bits 66-87), 22-bit signed, 0.001A units
-    int32_t current = ((uint32_t)(data[8] >> 2) & 0x3F)
-                    | ((uint32_t)data[9] << 6)
-                    | ((uint32_t)data[10] << 14);
-    if (current & 0x200000) current |= 0xFFC00000;  // Sign extend 22-bit
-    result.current = current * 0.001f;
-
-    // Consumed Ah (bits 88-107), 20-bit, stored as a positive count, 0.1Ah units.
-    // Reported as a negative value (amp-hours consumed).
-    uint32_t consumed = (uint32_t)data[11]
-                      | ((uint32_t)data[12] << 8)
-                      | ((uint32_t)(data[13] & 0x0F) << 16);
-    result.consumedAh = -((float)consumed * 0.1f);
-
-    // SOC (bits 108-117), 10-bit, 0.1% units
-    uint16_t soc = ((uint16_t)(data[13] >> 4) | ((uint16_t)data[14] << 4)) & 0x3FF;
-    result.soc = soc * 0.1f;
-
-    if (debugEnabled) {
-        Serial.printf("[VictronBLE] Battery: %.2fV %.2fA SOC:%.1f%%\n",
-                      result.voltage, result.current, result.soc);
+    case VICTRONBLE_DEV_INVERTER: {
+        entry->device.deviceType = DEVICE_TYPE_INVERTER;
+        VictronInverterData& inv = entry->device.inverter;
+        inv.batteryVoltage = rec.u.inverter.battery_voltage;
+        inv.batteryCurrent = rec.u.inverter.battery_current;
+        inv.acPower = rec.u.inverter.ac_power;
+        inv.state = rec.u.inverter.state;
+        inv.alarmLowVoltage = (rec.u.inverter.alarms & 0x01) != 0;
+        inv.alarmHighVoltage = (rec.u.inverter.alarms & 0x02) != 0;
+        inv.alarmHighTemperature = (rec.u.inverter.alarms & 0x04) != 0;
+        inv.alarmOverload = (rec.u.inverter.alarms & 0x08) != 0;
+        if (debugEnabled) {
+            Serial.printf("[VictronBLE] Inverter: %.2fV %dW State:%d\n",
+                          inv.batteryVoltage, (int)inv.acPower, inv.state);
+        }
+        break;
     }
-    return true;
-}
-
-bool VictronBLE::parseInverter(const uint8_t* data, size_t len, VictronInverterData& result) {
-    if (len < sizeof(victronInverterPayload)) return false;
-    const auto* p = reinterpret_cast<const victronInverterPayload*>(data);
-
-    result.state = p->deviceState;
-    result.batteryVoltage = p->batteryVoltage * 0.01f;
-    result.batteryCurrent = p->batteryCurrent * 0.01f;
-
-    // AC Power (signed 24-bit)
-    int32_t acPower = p->acPowerLow | (p->acPowerMid << 8) | (p->acPowerHigh << 16);
-    if (acPower & 0x800000) acPower |= 0xFF000000;  // Sign extend
-    result.acPower = acPower;
-
-    // Alarm bits
-    result.alarmLowVoltage = (p->alarms & 0x01) != 0;
-    result.alarmHighVoltage = (p->alarms & 0x02) != 0;
-    result.alarmHighTemperature = (p->alarms & 0x04) != 0;
-    result.alarmOverload = (p->alarms & 0x08) != 0;
-
-    if (debugEnabled) {
-        Serial.printf("[VictronBLE] Inverter: %.2fV %dW State:%d\n",
-                      result.batteryVoltage, (int)result.acPower, result.state);
+    case VICTRONBLE_DEV_DCDC_CONVERTER: {
+        entry->device.deviceType = DEVICE_TYPE_DCDC_CONVERTER;
+        VictronDCDCData& d = entry->device.dcdc;
+        d.chargeState = rec.u.dcdc.state;
+        d.errorCode = rec.u.dcdc.error;
+        d.inputVoltage = rec.u.dcdc.input_voltage;
+        d.outputVoltage = rec.u.dcdc.output_voltage;
+        d.outputCurrent = rec.u.dcdc.output_current;
+        if (debugEnabled) {
+            Serial.printf("[VictronBLE] DC-DC: In=%.2fV Out=%.2fV %.2fA\n",
+                          d.inputVoltage, d.outputVoltage, d.outputCurrent);
+        }
+        break;
     }
-    return true;
-}
-
-bool VictronBLE::parseDCDCConverter(const uint8_t* data, size_t len, VictronDCDCData& result) {
-    if (len < sizeof(victronDCDCConverterPayload)) return false;
-    const auto* p = reinterpret_cast<const victronDCDCConverterPayload*>(data);
-
-    result.chargeState = p->chargeState;
-    result.errorCode = p->errorCode;
-    result.inputVoltage = p->inputVoltage * 0.01f;
-    result.outputVoltage = p->outputVoltage * 0.01f;
-    result.outputCurrent = p->outputCurrent * 0.01f;
-
-    if (debugEnabled) {
-        Serial.printf("[VictronBLE] DC-DC: In=%.2fV Out=%.2fV %.2fA\n",
-                      result.inputVoltage, result.outputVoltage, result.outputCurrent);
+    case VICTRONBLE_DEV_AC_CHARGER: {
+        entry->device.deviceType = DEVICE_TYPE_AC_CHARGER;
+        VictronACChargerData& a = entry->device.acCharger;
+        a.chargeState = rec.u.ac.state;
+        a.errorCode = rec.u.ac.error;
+        a.voltage1 = nan_to_zero(rec.u.ac.voltage1);
+        a.current1 = nan_to_zero(rec.u.ac.current1);
+        a.voltage2 = nan_to_zero(rec.u.ac.voltage2);
+        a.current2 = nan_to_zero(rec.u.ac.current2);
+        a.voltage3 = nan_to_zero(rec.u.ac.voltage3);
+        a.current3 = nan_to_zero(rec.u.ac.current3);
+        a.temperature = nan_to_zero(rec.u.ac.temperature);
+        a.acCurrent = nan_to_zero(rec.u.ac.ac_current);
+        if (debugEnabled) {
+            Serial.printf("[VictronBLE] AC Charger: %.2fV %.2fA Temp:%.0fC State:%d\n",
+                          a.voltage1, a.current1, a.temperature, a.chargeState);
+        }
+        break;
     }
-    return true;
+    default:
+        break;
+    }
 }
 
 // --- Helpers ---
-
-bool VictronBLE::hexToBytes(const char* hex, uint8_t* out, size_t len) {
-    if (strlen(hex) != len * 2) return false;
-    for (size_t i = 0; i < len; i++) {
-        uint8_t hi = hex[i * 2], lo = hex[i * 2 + 1];
-        if (hi >= '0' && hi <= '9') hi -= '0';
-        else if (hi >= 'a' && hi <= 'f') hi = hi - 'a' + 10;
-        else if (hi >= 'A' && hi <= 'F') hi = hi - 'A' + 10;
-        else return false;
-        if (lo >= '0' && lo <= '9') lo -= '0';
-        else if (lo >= 'a' && lo <= 'f') lo = lo - 'a' + 10;
-        else if (lo >= 'A' && lo <= 'F') lo = lo - 'A' + 10;
-        else return false;
-        out[i] = (hi << 4) | lo;
-    }
-    return true;
-}
 
 void VictronBLE::normalizeMAC(const char* input, char* output) {
     int j = 0;

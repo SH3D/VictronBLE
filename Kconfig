@@ -1,0 +1,73 @@
+menuconfig VICTRONBLE
+	bool "Victron Instant Readout BLE observer"
+	depends on BT_OBSERVER
+	help
+	  Passive BLE observer for Victron Energy devices broadcasting
+	  Instant Readout advertisements (manufacturer ID 0x02E1,
+	  AES-128-CTR encrypted). No connection or pairing required.
+	  The application must call bt_enable() before victronble_start().
+
+if VICTRONBLE
+
+config VICTRONBLE_MAX_DEVICES
+	int "Maximum monitored devices"
+	default 4
+
+config VICTRONBLE_QUEUE_DEPTH
+	int "Advertisement queue depth"
+	default 8
+	help
+	  Frames are copied off the BT RX thread into this queue and decoded
+	  by a dedicated thread. A full queue drops the newest frame and
+	  counts the drop (see victronble_get_stats()).
+
+config VICTRONBLE_THREAD_STACK_SIZE
+	int "Decode thread stack size"
+	default 2048
+
+config VICTRONBLE_THREAD_PRIORITY
+	int "Decode thread priority (preemptible)"
+	default 10
+
+config VICTRONBLE_DEDUP
+	bool "Drop repeated advertisements by nonce counter"
+	default y
+	help
+	  Each advertisement is broadcast repeatedly on three channels.
+	  Tracking the last nonce per device suppresses duplicates so the
+	  record callback only fires when the device published new data.
+
+config VICTRONBLE_SCAN_INTERVAL
+	int "Scan interval (0.625 ms units)"
+	default 2048
+	help
+	  Default 2048 = 1.28 s (BT_GAP_SCAN_SLOW_INTERVAL_1). Victron
+	  devices advertise roughly once per second, so a low duty cycle
+	  catches records at a fraction of the radio-on time.
+
+config VICTRONBLE_SCAN_WINDOW
+	int "Scan window (0.625 ms units)"
+	default 18
+	help
+	  Default 18 = 11.25 ms (BT_GAP_SCAN_SLOW_WINDOW_1). Raise toward
+	  the interval for faster acquisition at higher power draw.
+
+choice VICTRONBLE_CRYPTO
+	prompt "AES-CTR backend"
+	default VICTRONBLE_CRYPTO_SOFTWARE
+
+config VICTRONBLE_CRYPTO_SOFTWARE
+	bool "Bundled software AES-128"
+	help
+	  The library's dependency-free tiny-AES CTR implementation. An
+	  external backend can instead provide a strong
+	  victronble_aes_ctr_default() (weak symbol) or register one at
+	  runtime with victronble_set_aes_ctr().
+
+endchoice
+
+module = VICTRONBLE
+module-str = victronble
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # VICTRONBLE

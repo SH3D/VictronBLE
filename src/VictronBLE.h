@@ -16,6 +16,7 @@
 #define VICTRON_BLE_H
 
 #include <Arduino.h>
+#include "victronble.h"   // pure C core: decode + decrypt (src/victronble_core.c)
 
 // --- Platform BLE backend selection ---
 // The BLE scanning layer is the only platform-specific part of the library.
@@ -247,22 +248,17 @@ private:
     uint32_t minIntervalMs;
     bool initialized;
 
-    static bool hexToBytes(const char* hex, uint8_t* out, size_t len);
     static void normalizeMAC(const char* input, char* output);
     DeviceEntry* findDevice(const char* normalizedMAC);
-    bool decryptData(const uint8_t* encrypted, size_t len,
-                     const uint8_t* key, const uint8_t* iv, uint8_t* decrypted);
 
     // Common entry point fed by each platform BLE backend with one raw
     // manufacturer-data record (vendor ID first), the device MAC and RSSI.
+    // Decryption and payload decoding are delegated to victronble_decode()
+    // in the pure C core; storeRecord() maps the result into the legacy
+    // public structs (core NAN sentinels become 0).
     void onAdvertisement(const uint8_t* mfgData, size_t len,
                          const char* macStr, int8_t rssi);
-    bool parseAdvertisement(DeviceEntry* entry, const victronManufacturerData& mfg);
-    bool parseSolarCharger(const uint8_t* data, size_t len, VictronSolarData& result);
-    bool parseACCharger(const uint8_t* data, size_t len, VictronACChargerData& result);
-    bool parseBatteryMonitor(const uint8_t* data, size_t len, VictronBatteryData& result);
-    bool parseInverter(const uint8_t* data, size_t len, VictronInverterData& result);
-    bool parseDCDCConverter(const uint8_t* data, size_t len, VictronDCDCData& result);
+    void storeRecord(DeviceEntry* entry, const victronble_record_t& rec);
 
     // --- Platform-specific BLE backend (see src/esp32 and src/nrf52) ---
 #if defined(VICTRON_BACKEND_ESP32)
