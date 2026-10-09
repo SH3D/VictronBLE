@@ -12,7 +12,7 @@
 #include <string.h>
 #include <math.h>
 
-#include "victronble.h"
+#include "victronble_core.h"
 #include "test_vectors.h"
 
 static int failures;

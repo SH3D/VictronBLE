@@ -98,7 +98,7 @@ done you can unit-test the parser on your workstation for the first time.
 - Freestanding-safe: `<stdint.h>`, `<stddef.h>`, `<string.h>`, `<math.h>` only.
 - Reentrant. No file-scope mutable state in the parse path.
 
-### `include/victronble.h`
+### `include/victronble_core.h`
 
 ```c
 #ifndef VICTRONBLE_H
@@ -339,7 +339,7 @@ victronble/
 ├── zephyr/
 │   └── module.yml
 ├── include/
-│   └── victronble.h          # pure C core
+│   └── victronble_core.h     # pure C core
 │   └── victronble_zephyr.h   # Zephyr-specific observer API
 ├── src/
 │   ├── victronble_core.c     # pure C99, no dependencies

@@ -9,7 +9,7 @@
  * License: MIT
  */
 
-#include "victronble.h"
+#include "victronble_core.h"
 #include "crypto/vble_aes.h"
 
 #include <string.h>

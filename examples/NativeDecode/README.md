@@ -79,6 +79,6 @@ victronble_device_type_str()
 victronble_state_str()
 ```
 
-That is the whole portable core. See `include/victronble.h` for the record
+That is the whole portable core. See `include/victronble_core.h` for the record
 structures, and `samples/observer/` for the same printing logic driven by a
 live BLE scan under Zephyr.

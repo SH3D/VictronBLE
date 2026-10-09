@@ -1,5 +1,16 @@
 # Version History
 
+## 0.7.1 (2026-10-09)
+
+### Fixed
+- The library ZIP no longer breaks on Windows and other case-insensitive
+  filesystems. `src/` held both `VictronBLE.h` and `victronble.h`, so
+  extracting one overwrote the other (issue #2, with thanks for the report
+  and the workaround). The C core header is now `victronble_core.h` in both
+  `include/` and `src/`. Code that includes `victronble.h` from `include/`
+  (Zephyr, host builds) still works through a deprecated forwarder.
+- `check_version.sh` now fails if two tracked paths differ only in case.
+
 ## 0.7.0 (2026-08-21)
 
 Pure C core + Zephyr support. One repo now serves three ecosystems: Arduino

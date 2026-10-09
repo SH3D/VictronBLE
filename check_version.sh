@@ -4,7 +4,8 @@
 #
 # Read-only: confirms the version matches in both manifests and that a matching
 # git tag (vX.Y.Z) exists. Run it before tagging a release. Non-zero exit if the
-# versions disagree or the tag is missing.
+# versions disagree, the tag is missing, or two tracked paths differ only in
+# case (they collide when the ZIP is extracted on Windows or macOS).
 #
 # SPDX-License-Identifier: MIT
 
@@ -29,6 +30,14 @@ if git rev-parse -q --verify "refs/tags/v$json" >/dev/null 2>&1; then
     echo "ok   git tag v$json exists"
 else
     echo "FAIL no git tag v$json -- create one to release: git tag v$json"; fail=1
+fi
+
+clash=$(git ls-files | tr '[:upper:]' '[:lower:]' | sort | uniq -d)
+if [ -z "$clash" ]; then
+    echo "ok   no paths differ only in case"
+else
+    echo "FAIL paths differ only in case (breaks Windows/macOS extract):"
+    echo "$clash" | sed 's/^/     /'; fail=1
 fi
 
 exit "$fail"

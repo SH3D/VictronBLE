@@ -11,7 +11,7 @@
  */
 
 #include "VictronBLE.h"
-#include "victronble.h"
+#include "victronble_core.h"
 #include <string.h>
 #include <math.h>
 

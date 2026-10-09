@@ -62,7 +62,7 @@ static const struct {
 
 /*
  * A float field the device did not send comes back as NAN (see
- * include/victronble.h). Render that as "n/a" rather than letting "nan" leak
+ * include/victronble_core.h). Render that as "n/a" rather than letting "nan" leak
  * into the log — a missing load-current reading is not a fault. The unit goes
  * in here too, so an absent field reads "n/a" and not "n/a A".
  *

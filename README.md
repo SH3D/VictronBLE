@@ -488,7 +488,7 @@ The library keeps everything platform-independent except the BLE radio:
 
 ```
 include/
-├── victronble.h            Pure C99 core API — decode one advert, no I/O
+├── victronble_core.h       Pure C99 core API — decode one advert, no I/O
 └── victronble_zephyr.h     Zephyr observer API
 src/
 ├── victronble_core.c       Decrypt + parse; no BLE, no alloc, reentrant

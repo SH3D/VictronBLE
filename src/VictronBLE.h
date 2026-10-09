@@ -16,7 +16,7 @@
 #define VICTRON_BLE_H
 
 #include <Arduino.h>
-#include "victronble.h"   // pure C core: decode + decrypt (src/victronble_core.c)
+#include "victronble_core.h"   // pure C core: decode + decrypt (src/victronble_core.c)
 
 // --- Platform BLE backend selection ---
 // The BLE scanning layer is the only platform-specific part of the library.

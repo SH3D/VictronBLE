@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "victronble.h"
+#include "victronble_core.h"
 
 /*
  * Sample advertisement from the library's own test vectors

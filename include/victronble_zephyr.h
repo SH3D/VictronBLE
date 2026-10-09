@@ -19,7 +19,7 @@
 #include <zephyr/bluetooth/addr.h>
 #include <zephyr/sys/slist.h>
 
-#include "victronble.h"
+#include "victronble_core.h"
 
 #ifdef __cplusplus
 extern "C" {
