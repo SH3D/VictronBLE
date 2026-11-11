@@ -1,5 +1,20 @@
 # Version History
 
+## Unreleased
+
+### Fixed
+- Battery monitor fields that carry Victron's "not available" value are now
+  NAN in the C core: voltage (0x7FFF), current (0x3FFFFF), aux voltage and
+  temperature (0xFFFF), consumed Ah (0xFFFFF) and SOC (0x3FF). Before this,
+  an unsynchronised shunt reported SOC 102.3 % and an unavailable current
+  decoded as -0.001 A. Time-to-go keeps its integer 0xFFFF, now named
+  `VICTRONBLE_TTG_NA`. The Arduino wrapper maps the new NANs to 0, matching
+  its existing convention.
+- Host test vector for a battery monitor with every field not available.
+
+### Tested
+- Battery monitor decoded live on Zephyr (ESP32-S3, Heltec WiFi LoRa 32 V3).
+
 ## 0.7.1 (2026-10-09)
 
 ### Fixed

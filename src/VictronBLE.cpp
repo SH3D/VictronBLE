@@ -130,13 +130,13 @@ void VictronBLE::storeRecord(DeviceEntry* entry, const victronble_record_t& rec)
     case VICTRONBLE_DEV_BATTERY_MONITOR: {
         entry->device.deviceType = DEVICE_TYPE_BATTERY_MONITOR;
         VictronBatteryData& b = entry->device.battery;
-        b.voltage = rec.u.batmon.voltage;
-        b.current = rec.u.batmon.current;
+        b.voltage = nan_to_zero(rec.u.batmon.voltage);
+        b.current = nan_to_zero(rec.u.batmon.current);
         b.temperature = nan_to_zero(rec.u.batmon.temperature);
         b.auxVoltage = nan_to_zero(rec.u.batmon.aux_voltage);
         b.remainingMinutes = rec.u.batmon.remaining_minutes;
-        b.consumedAh = rec.u.batmon.consumed_ah;
-        b.soc = rec.u.batmon.soc;
+        b.consumedAh = nan_to_zero(rec.u.batmon.consumed_ah);
+        b.soc = nan_to_zero(rec.u.batmon.soc);
         b.alarmLowVoltage = (rec.u.batmon.alarm & 0x0001) != 0;
         b.alarmHighVoltage = (rec.u.batmon.alarm & 0x0002) != 0;
         b.alarmLowSOC = (rec.u.batmon.alarm & 0x0004) != 0;

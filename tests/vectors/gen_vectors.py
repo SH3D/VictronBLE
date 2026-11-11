@@ -76,6 +76,19 @@ batmon = pad21(pack_bits([
     (855, 10),            # SOC, 0.1 %
 ]))
 
+# Battery monitor before it has synchronised, with nothing on aux: every
+# field carries Victron's "not available" value.
+batmon_na = pad21(pack_bits([
+    (0xFFFF, 16),         # TTG n/a
+    (0x7FFF, 16),         # voltage n/a
+    (0x0000, 16),         # no alarms
+    (0xFFFF, 16),         # aux n/a
+    (0, 2),               # aux mode = aux voltage
+    (0x3FFFFF, 22),       # current n/a
+    (0xFFFFF, 20),        # consumed n/a
+    (0x3FF, 10),          # SOC n/a
+]))
+
 # Inverter: inverting, 25.86 V, -12.34 A, -230 W, overload alarm.
 inverter = pad21(bytes([9, 0]) + le16(2586) + le16(-1234 & 0xFFFF) +
                  ((-230) & 0xFFFFFF).to_bytes(3, "little") + bytes([0x08]))
@@ -97,6 +110,7 @@ accharger = pad21(pack_bits([
 VECTORS = [
     ("solar", frame(0x01, 0xA060, 0x00, 0x1234, solar)),
     ("batmon", frame(0x02, 0xA389, 0x00, 0xBEEF, batmon)),
+    ("batmon_na", frame(0x02, 0xA389, 0x00, 0xBEF0, batmon_na)),
     ("inverter", frame(0x03, 0xA2FA, 0x00, 0x0001, inverter)),
     ("dcdc", frame(0x04, 0xA3C0, 0x00, 0xFFFF, dcdc)),
     ("accharger", frame(0x08, 0xA339, 0x00, 0x00C8, accharger)),

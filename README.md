@@ -32,12 +32,23 @@ Under Arduino it supports **ESP32** (original, S and C series — tested on olde
 - **AC Chargers**: Blue Smart IP22 / IP65 / IP67 chargers
 - **Others**: Smart Battery Protect, Lynx Smart BMS, Smart Lithium batteries
 
+Tested against real hardware: solar chargers (SmartSolar MPPT) and, since
+November 2026, a battery monitor, decoded live over Zephyr on an ESP32-S3
+(Heltec WiFi LoRa 32 V3) alongside two MPPTs. The shunt voltage agreed
+with both chargers to within 0.03 V. That test ran on a full battery in
+float, so the sign of the current has not yet been checked under charge or
+discharge on real hardware (the host test vectors cover it). A battery monitor
+sends "not available" values for fields it cannot report (SOC and consumed
+Ah before it has synchronised, time-to-go while idle, aux with nothing
+wired). The C core returns those as `NAN`, and time-to-go as
+`VICTRONBLE_TTG_NA`; the Arduino wrapper returns 0.
+
 ## Hardware Requirements
 
 - An ESP32 (original / S / C series) **or** an nRF52840 board (Adafruit/Seeed
   Bluefruit core — e.g. Seeed XIAO nRF52840) for the Arduino API
 - Or any Zephyr-supported board with a Bluetooth controller (tested on
-  nRF52840DK and RAK4631)
+  nRF52840DK, RAK4631 and Heltec WiFi LoRa 32 V3)
 - Victron devices with BLE "Instant Readout" enabled
 
 Under Arduino the BLE backend is selected automatically at compile time from

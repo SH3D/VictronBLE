@@ -152,13 +152,13 @@ struct VictronACChargerData {
 };
 
 struct VictronBatteryData {
-    float voltage;             // V
-    float current;             // A
-    float temperature;         // C (0 if aux is voltage)
-    float auxVoltage;          // V (0 if aux is temperature)
-    uint16_t remainingMinutes;
-    float consumedAh;          // Ah
-    float soc;                 // %
+    float voltage;             // V (0 if not available)
+    float current;             // A (0 if not available)
+    float temperature;         // C (0 if aux is voltage or not available)
+    float auxVoltage;          // V (0 if aux is temperature or not available)
+    uint16_t remainingMinutes; // 0xFFFF if not available
+    float consumedAh;          // Ah (0 if not available)
+    float soc;                 // % (0 if not available)
     bool alarmLowVoltage;
     bool alarmHighVoltage;
     bool alarmLowSOC;

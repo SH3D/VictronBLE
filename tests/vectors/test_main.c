@@ -72,6 +72,19 @@ int main(void)
     CHECK(feq(rec.u.batmon.consumed_ah, -50.0f));
     CHECK(feq(rec.u.batmon.soc, 85.5f));
 
+    /* --- battery monitor, every field not available --- */
+    CHECK(decode(VEC_BATMON_NA, sizeof(VEC_BATMON_NA), key, &rec) == VICTRONBLE_OK);
+    CHECK(rec.type == VICTRONBLE_DEV_BATTERY_MONITOR);
+    CHECK(rec.u.batmon.remaining_minutes == VICTRONBLE_TTG_NA);
+    CHECK(isnan(rec.u.batmon.voltage));
+    CHECK(rec.u.batmon.alarm == 0);
+    CHECK(rec.u.batmon.aux_mode == 0);
+    CHECK(isnan(rec.u.batmon.aux_voltage));
+    CHECK(isnan(rec.u.batmon.temperature));
+    CHECK(isnan(rec.u.batmon.current));
+    CHECK(isnan(rec.u.batmon.consumed_ah));
+    CHECK(isnan(rec.u.batmon.soc));
+
     /* --- inverter --- */
     CHECK(decode(VEC_INVERTER, sizeof(VEC_INVERTER), key, &rec) == VICTRONBLE_OK);
     CHECK(rec.type == VICTRONBLE_DEV_INVERTER);

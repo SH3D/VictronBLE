@@ -87,14 +87,20 @@ typedef struct {
     float    load_current;        /* A, NAN if no load output */
 } victronble_solar_charger_t;
 
+/** Battery monitor time-to-go value meaning "not available". */
+#define VICTRONBLE_TTG_NA 0xFFFFu
+
 typedef struct {
-    float    voltage;             /* V */
-    float    current;             /* A */
-    float    temperature;         /* degC, NAN unless aux mode = temperature */
-    float    aux_voltage;         /* V, NAN unless aux mode = aux voltage */
-    uint16_t remaining_minutes;   /* time-to-go; 0xFFFF = not available */
-    float    consumed_ah;         /* Ah, negative = consumed */
-    float    soc;                 /* % */
+    float    voltage;             /* V, NAN if not available */
+    float    current;             /* A, NAN if not available */
+    float    temperature;         /* degC, NAN unless aux mode = temperature
+                                   * and a reading is available */
+    float    aux_voltage;         /* V, NAN unless aux mode = aux voltage
+                                   * and a reading is available */
+    uint16_t remaining_minutes;   /* time-to-go; VICTRONBLE_TTG_NA = not
+                                   * available (e.g. idle or not synced) */
+    float    consumed_ah;         /* Ah, negative = consumed; NAN if n/a */
+    float    soc;                 /* %, NAN if not available (not synced) */
     uint8_t  aux_mode;            /* 0=aux V, 1=midpoint, 2=temperature, 3=none */
     uint16_t alarm;               /* raw 16-bit alarm bitmask */
 } victronble_battery_monitor_t;

@@ -105,34 +105,51 @@ static bool parse_battery_monitor(const uint8_t *d, size_t len,
         return false;
     }
 
+    /* Every field has a "not available" raw value (all ones; 0x7FFF for the
+     * signed voltage). The shunt sends them before it has synchronised, and
+     * aux values when nothing is wired. Those map to NAN here, except TTG,
+     * which stays 0xFFFF (VICTRONBLE_TTG_NA) because it is an integer. */
     r->remaining_minutes = get_le16(d);                      /* bits 0-15 */
-    r->voltage = (int16_t)get_le16(d + 2) * 0.01f;           /* bits 16-31 */
+    uint16_t v_raw = get_le16(d + 2);                        /* bits 16-31 */
+    r->voltage = (v_raw != 0x7FFF) ? (int16_t)v_raw * 0.01f : NAN;
     r->alarm = get_le16(d + 4);                              /* bits 32-47 */
 
     /* Aux value (bits 48-63) interpreted per aux mode (bits 64-65) */
     uint16_t aux_raw = get_le16(d + 6);
+    bool aux_ok = (aux_raw != 0xFFFF);
     r->aux_mode = d[8] & 0x03;
-    r->aux_voltage = (r->aux_mode == 0) ? aux_raw * 0.01f : NAN;
-    r->temperature = (r->aux_mode == 2) ? aux_raw * 0.01f - 273.15f : NAN;
+    r->aux_voltage = (r->aux_mode == 0 && aux_ok) ? aux_raw * 0.01f : NAN;
+    r->temperature = (r->aux_mode == 2 && aux_ok) ?
+                     aux_raw * 0.01f - 273.15f : NAN;
 
-    /* Battery current (bits 66-87), 22-bit signed, 0.001 A units */
-    int32_t current = (int32_t)(((uint32_t)(d[8] >> 2) & 0x3F) |
-                                ((uint32_t)d[9] << 6) |
-                                ((uint32_t)d[10] << 14));
-    if (current & 0x200000) {
-        current |= (int32_t)0xFFC00000;                      /* sign extend */
+    /* Battery current (bits 66-87), 22-bit signed, 0.001 A units. Test the
+     * not-available value before sign extension: 0x3FFFFF would otherwise
+     * read as a plausible -0.001 A. */
+    uint32_t i_raw = ((uint32_t)(d[8] >> 2) & 0x3F) |
+                     ((uint32_t)d[9] << 6) |
+                     ((uint32_t)d[10] << 14);
+    i_raw &= 0x3FFFFF;
+    if (i_raw == 0x3FFFFF) {
+        r->current = NAN;
+    } else {
+        int32_t current = (int32_t)i_raw;
+
+        if (current & 0x200000) {
+            current |= (int32_t)0xFFC00000;                  /* sign extend */
+        }
+        r->current = current * 0.001f;
     }
-    r->current = current * 0.001f;
 
     /* Consumed Ah (bits 88-107), 20-bit positive count, 0.1 Ah units,
      * reported negative (amp-hours consumed). */
     uint32_t consumed = (uint32_t)d[11] | ((uint32_t)d[12] << 8) |
                         ((uint32_t)(d[13] & 0x0F) << 16);
-    r->consumed_ah = -((float)consumed * 0.1f);
+    r->consumed_ah = (consumed != 0xFFFFF) ?
+                     -((float)consumed * 0.1f) : NAN;
 
     /* SOC (bits 108-117), 10-bit, 0.1 % units */
     uint16_t soc = (uint16_t)(((d[13] >> 4) | ((uint16_t)d[14] << 4)) & 0x3FF);
-    r->soc = soc * 0.1f;
+    r->soc = (soc != 0x3FF) ? soc * 0.1f : NAN;
     return true;
 }
 
